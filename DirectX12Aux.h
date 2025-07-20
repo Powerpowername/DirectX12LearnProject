@@ -5,9 +5,10 @@
 #include <d3d12.h>
 #include <d3dx12.h>
 #include <dxgi1_4.h>
+#include "d3dUtil.h"
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
-#include "d3dUtil.h"
+
 using namespace Microsoft::WRL;
 class D3DApp
 {
@@ -26,7 +27,6 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12Resource> mSwapChainBuffer[SwapChainBufferCount];// 后备缓冲区数组
 	Microsoft::WRL::ComPtr<ID3D12Resource> mDepthStencilBuffer;// 深度模板缓冲区指针
 
-	DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	ComPtr<IDXGISwapChain> mSwapChain;//交换链
 	ComPtr<IDXGIFactory4> mdxgiFactory;// DXGI工厂指针
 	ComPtr<ID3D12Device> md3dDevice;// D3D12设备指针
@@ -42,13 +42,6 @@ public:
 
 	ComPtr<ID3D12DescriptorHeap> mRtvHeap;// RTV描述符堆
 	ComPtr<ID3D12DescriptorHeap> mDsvHeap;// DSV描述符堆
-	//function
-	bool InitDirect3D();// 初始化Direct3D
-	void CreateSwapChain();// 创建交换链
-	void CreateCommandObjects();// 创建命令对象
-	void CreateRtvAndDsvDescriptorHeaps();// 创建RTV和DSV描述符堆
-	void OnResize();// 窗口大小调整处理函数
-	void FlushCommandQueue();// 刷新命令队列
 
 	// 通用初始值
 	int mClientWidth = 800;
@@ -56,4 +49,15 @@ public:
 	D3D_DRIVER_TYPE md3dDriverType = D3D_DRIVER_TYPE_HARDWARE;
 	DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	DXGI_FORMAT mDepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	//function
+	bool InitDirect3D();// 初始化Direct3D
+	void CreateSwapChain();// 创建交换链
+	void CreateCommandObjects();// 创建命令对象
+	void CreateRtvAndDsvDescriptorHeaps();// 创建RTV和DSV描述符堆
+	void OnResize();// 窗口大小调整处理函数
+	void FlushCommandQueue();// 刷新命令队列
+	void LogAdapters();// 日志适配器信息
+	void LogAdapterOutputs(IDXGIAdapter* adapter);// 日志适配器输出信息
+	void LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format);// 日志输出显示模式信息
+
 };

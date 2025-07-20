@@ -199,8 +199,10 @@ void D3DApp::OnResize()
 	optClear.Format = mDepthStencilFormat; // 设置深度模板格式
 	optClear.DepthStencil.Depth = 1.0f; // 设置深度清除值为1.0
 	optClear.DepthStencil.Stencil = 0; // 设置模板清除值为0
+
+	CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT); // 局部变量解决C2102
 	ThrowIfFailed(md3dDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), // 设置堆属性为默认堆
+		&heapProps, // 设置堆属性为默认堆
 		D3D12_HEAP_FLAG_NONE, // 设置堆标志为无
 		&depthStencilDesc, // 深度模板缓冲区描述符
 		D3D12_RESOURCE_STATE_COMMON, // 初始资源状态为通用状态
@@ -219,11 +221,12 @@ void D3DApp::OnResize()
 		mDsvHeap->GetCPUDescriptorHandleForHeapStart() // 获取DSV描述符堆的CPU描述符句柄
 	);// 创建深度模板视图
 	
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
 		mDepthStencilBuffer.Get(), // 深度模板缓冲区指针
 		D3D12_RESOURCE_STATE_COMMON, // 初始资源状态为通用状态
 		D3D12_RESOURCE_STATE_DEPTH_WRITE // 目标资源状态为深度写入状态
-	));// 添加资源屏障，确保深度模板缓冲区在渲染时处于正确的状态
+	);// 添加资源屏障，确保深度模板缓冲区在渲染时处于正确的状态
+	mCommandList->ResourceBarrier(1, &barrier);// 在命令列表中添加资源屏障
 }
 
 void D3DApp::FlushCommandQueue()
@@ -236,6 +239,78 @@ void D3DApp::FlushCommandQueue()
 		ThrowIfFailed(mFence->SetEventOnCompletion(mCurrentFence, eventHandle));// 设置栅栏值完成时的事件
 		WaitForSingleObject(eventHandle, INFINITE);// 等待事件被触发，直到栅栏值更新
 		CloseHandle(eventHandle);// 关闭事件句柄
+	}
+}
+
+void D3DApp::LogAdapters()
+{
+	UINT i = 0;// 适配器索引
+	IDXGIAdapter* adapter = nullptr;// 适配器指针
+	std::vector<IDXGIAdapter*> adapterList;// 适配器列表
+	while (mdxgiFactory->EnumAdapters(i, &adapter) != DXGI_ERROR_NOT_FOUND)
+	{
+		DXGI_ADAPTER_DESC desc = {};// 适配器描述符
+		adapter->GetDesc(&desc);// 获取适配器描述符
+		std::wstring text = L"***Adapter: ";
+		text += desc.Description;// 添加适配器描述
+		text += L"\n";
+		OutputDebugString(text.c_str());// 输出适配器信息到调试输出窗口
+		adapterList.push_back(adapter);// 将适配器添加到适配器列表
+		i++;
+	}
+	for (size_t i = 0; i < adapterList.size(); ++i)
+	{
+		LogAdapterOutputs(adapterList[i]);
+		ReleaseCom(adapterList[i]);
+		//{ if (adapterList[i]) { adapterList[i]->Release(); adapterList[i] = 0; } }
+	}
+
+}
+
+void D3DApp::LogAdapterOutputs(IDXGIAdapter* adapter)
+{
+	UINT i = 0;
+	IDXGIOutput* output = nullptr;
+	while (adapter->EnumOutputs(i, &output) != DXGI_ERROR_NOT_FOUND)
+	{
+		DXGI_OUTPUT_DESC desc;
+		output->GetDesc(&desc);
+
+		std::wstring text = L"***Output: ";
+		text += desc.DeviceName;
+		text += L"\n";
+		OutputDebugString(text.c_str());
+
+		LogOutputDisplayModes(output, mBackBufferFormat);// 日志输出显示模式信息
+
+		ReleaseCom(output);
+
+		++i;
+	}
+}
+
+void D3DApp::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
+{
+	UINT count = 0;
+	UINT flags = 0;
+
+	// Call with nullptr to get list count.
+	output->GetDisplayModeList(format, flags, &count, nullptr);
+
+	std::vector<DXGI_MODE_DESC> modeList(count);
+	output->GetDisplayModeList(format, flags, &count, &modeList[0]);
+
+	for (auto& x : modeList)
+	{
+		UINT n = x.RefreshRate.Numerator;
+		UINT d = x.RefreshRate.Denominator;
+		std::wstring text =
+			L"Width = " + std::to_wstring(x.Width) + L" " +
+			L"Height = " + std::to_wstring(x.Height) + L" " +
+			L"Refresh = " + std::to_wstring(n) + L"/" + std::to_wstring(d) +
+			L"\n";
+
+		::OutputDebugString(text.c_str());
 	}
 }
 
