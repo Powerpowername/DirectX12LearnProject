@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="learnAssets">
+      <UniqueIdentifier>{8e21c7a7-50ad-42d3-b8f8-790ad76dae20}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -23,6 +26,12 @@
     </ClCompile>
     <ClCompile Include="d3dUtil.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="pipline.cpp">
+      <Filter>learnAssets</Filter>
+    </ClCompile>
+    <ClCompile Include="triangle.cpp">
+      <Filter>learnAssets</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

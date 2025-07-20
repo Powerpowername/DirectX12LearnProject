@@ -1,4 +1,9 @@
 #pragma once
+#if defined(DEBUG) || defined(_DEBUG)
+#define _CRTDBG_MAP_ALLOC
+#include <crtdbg.h>
+#endif
+
 #include <wrl.h>
 #include <string>
 #include <stdexcept> 
@@ -14,7 +19,7 @@ class D3DApp
 {
 public:
 	
-	HWND      mhMainWnd = nullptr;// 主窗口句柄
+	HWND    mhMainWnd = nullptr;// 主窗口句柄
 	bool	m4xMsaaState = false;// 是否开启4倍多重采样抗锯齿
 	UINT	m4xMsaaQuality = 0;// 4倍多重采样抗锯齿的质量级别
 
