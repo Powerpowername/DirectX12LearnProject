@@ -59,7 +59,7 @@ vertexBufferView.SizeInBytes = sizeof(vertices);
 // 在命令列表中绑定顶点视图到输入装配器阶段,这样GPU才知道怎么用
 commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
 ```
-## 什么是常量缓冲区，什么是常量缓冲区描述符？什么是根签名？
+## 什么是常量缓冲区，什么是常量缓冲区描述符？什么是根签名？（CBV）
 常量缓冲区是一块GPU 内存，用于存储 shader 程序运行时不会改变的变量（如世界矩阵、视图矩阵、光照参数）。它是数据的实际存储位置，可被多个 shader（顶点着色器、像素着色器等）共享访问。
 通常位于 GPU 显存（如 DirectX 的 D3D12_HEAP_TYPE_DEFAULT）或 CPU-GPU 共享内存（如 D3D12_HEAP_TYPE_UPLOAD）。DirectX12暂时看到是使用D3D12_HEAP_TYPE_UPLOAD创建的
 ```cpp
@@ -100,7 +100,7 @@ device->CreateConstantBufferView(&cbvDesc, descriptorHeap->GetCPUDescriptorHandl
 ![alt text](image.png)
 ```cpp
 //创建流程如下
-// 创建根签名
+
 // 根参数数组
 CD3DX12_ROOT_PARAMETER rootParameters[2];
     
@@ -137,14 +137,12 @@ D3D12SerializeRootSignature(
     &error
 );
     
-    // 创建根签名对象
+// 创建根签名对象
 ComPtr<ID3D12RootSignature> rootSignature;
 device->CreateRootSignature(
-        0,
+    0,
     signature->GetBufferPointer(),
     signature->GetBufferSize(),
     IID_PPV_ARGS(&rootSignature)
 );
-    
-return rootSignature;
 ```
