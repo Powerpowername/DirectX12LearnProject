@@ -1,40 +1,57 @@
-#include <windows.h>
-#include <d3d12.h>//directx12 API ¿â
-#include <dxgi1_4.h> //DirectX Í¼ĞÎ»ù´¡ÉèÊ© (DXGI) 
+ï»¿#include <windows.h>
+#include <d3d12.h>//directx12 API åº“
+#include <dxgi1_4.h> //DirectX å›¾å½¢åŸºç¡€è®¾æ–½ (DXGI) 
 #include <wrl.h>
 #include <iostream>
 #include <d3dx12.h >
 #include <DirectXMath.h>
+#include <d3dcompiler.h>
+//#include <xstring>
+#pragma comment(lib,"d3dcompiler.lib") //ç¼–è¯‘ç€è‰²å™¨éœ€è¦çš„åº“
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
+//#pragma comment(linker, "/SUBSYSTEM:WINDOWS")
+//#pragma comment(linker, "/ENTRY:WinMain")
 using namespace Microsoft::WRL;
 using namespace DirectX;
 const UINT FrameCount = 2;
 UINT width = 800;
 UINT height = 600;
-HWND hwnd;//´°¿Ú¾ä±ú
+HWND hwnd;//çª—å£å¥æŸ„
 
-//¹ÜÏß¶ÔÏó
+//ç®¡çº¿å¯¹è±¡
+CD3DX12_VIEWPORT viewport(0.0f, 0.0f, width, height);
+CD3DX12_RECT scissorRect(0, 0, width, height);//è£å‰ªçŸ©å½¢
 ComPtr<IDXGISwapChain3> swapChain;
 ComPtr<ID3D12Device> device;
-ComPtr<ID3D12Resource> renderTargets[FrameCount];//äÖÈ¾¶ÔÏó£¬ºóÃæĞèÒª½«½»»»Á´ÖĞµÄÄÚ´æ½»¸øËû¹ÜÀí
+ComPtr<ID3D12Resource> renderTargets[FrameCount];//æ¸²æŸ“å¯¹è±¡ï¼Œåé¢éœ€è¦å°†äº¤æ¢é“¾ä¸­çš„å†…å­˜äº¤ç»™ä»–ç®¡ç†
 ComPtr<ID3D12CommandAllocator> commandAllocator;
 ComPtr<ID3D12CommandQueue> commandQueue;
-ComPtr<ID3D12DescriptorHeap> rtvHeap;//rtvÃèÊö·û¶Ñ
+ComPtr<ID3D12DescriptorHeap> rtvHeap;//rtvæè¿°ç¬¦å †
 ComPtr<ID3D12PipelineState> pipelineState;
 ComPtr<ID3D12GraphicsCommandList> commandList;
-UINT rtvDescriptorSize;//RTVÃèÊö³ß´ç
+UINT rtvDescriptorSize;//RTVæè¿°å°ºå¯¸
+ComPtr<ID3D12RootSignature> rootSignature;//æ ¹ç­¾å
+//shader
+ComPtr<ID3D12Resource> vertexBuffer;
+D3D12_VERTEX_BUFFER_VIEW vertexBufferView;//é¡¶ç‚¹ç¼“å†²åŒºè§†å›¾
 
-//Í¬²½¶ÔÏó
-UINT frameIndex;//µ±Ç°Ö¡Ë÷Òı
+//åŒæ­¥å¯¹è±¡
+UINT frameIndex;//å½“å‰å¸§ç´¢å¼•
 HANDLE fenceEvent;
 ComPtr<ID3D12Fence> fence;
 UINT64 fenceValue;
 
-float color[4];
+float color[3];
 bool isRAdd = true;
 bool isGAdd = true;
 bool isBAdd = true;
+
+struct Vertex
+{
+	XMFLOAT3 pos;   // ä½ç½®
+	XMFLOAT4 color; // é¢œè‰²
+};
 
 std::string HrToString(HRESULT hr)
 {
@@ -65,19 +82,19 @@ IDXGIAdapter1* GetSupportedAdapter(ComPtr<IDXGIFactory4>& dxgiFactory, const D3D
 	IDXGIAdapter1* adapter = nullptr;
 	for (unsigned int adapterIndex = 0;; ++adapterIndex)
 	{
-		IDXGIAdapter1* currentAdapter = nullptr;//Õâ±ß¿ÉÒÔÖ±½ÓÊ¹ÓÃComPtr
-		if (DXGI_ERROR_NOT_FOUND == dxgiFactory->EnumAdapters1(adapterIndex, &currentAdapter))//Ö»ÊÇÃ¶¾ÙÊÊÅäÆ÷£¬ÒªÊÇÃ»ÓĞÊÊÅäÆ÷¾ÍÖ±½ÓÍË³ö
+		IDXGIAdapter1* currentAdapter = nullptr;//è¿™è¾¹å¯ä»¥ç›´æ¥ä½¿ç”¨ComPtr
+		if (DXGI_ERROR_NOT_FOUND == dxgiFactory->EnumAdapters1(adapterIndex, &currentAdapter))//åªæ˜¯æšä¸¾é€‚é…å™¨ï¼Œè¦æ˜¯æ²¡æœ‰é€‚é…å™¨å°±ç›´æ¥é€€å‡º
 		{
 			break;
 		}
-		//IID_PPV_ARGS(ppType) __uuidof(**(ppType)), IID_PPV_ARGS_Helper(ppType) ´Ë´¦ __uuidof(**(ppType))ÖĞµÄ(**(ppType))ÊÇÎªÁËÈÃ±àÒëÆ÷ÍÆµ¼³öÀàĞÍ£¬¶ø²¢²»ÊÇ¶ÔÏó£¬¸ù¾İÀàĞÍÉú³ÉGUID
-		const HRESULT hres = D3D12CreateDevice(currentAdapter, featureLevel, _uuidof(ID3D12Device), nullptr);//×îºóÒ»¸ö²ÎÊı´«µİnullptr¾Í¿ÉÒÔÖ»¼ì²éÊÊÅäÆ÷ÌØĞÔ¶ø²»È¥Êµ¼Ê´´½¨Éè±¸¶ÔÏó¶ÔÏó
+		//IID_PPV_ARGS(ppType) __uuidof(**(ppType)), IID_PPV_ARGS_Helper(ppType) æ­¤å¤„ __uuidof(**(ppType))ä¸­çš„(**(ppType))æ˜¯ä¸ºäº†è®©ç¼–è¯‘å™¨æ¨å¯¼å‡ºç±»å‹ï¼Œè€Œå¹¶ä¸æ˜¯å¯¹è±¡ï¼Œæ ¹æ®ç±»å‹ç”ŸæˆGUID
+		const HRESULT hres = D3D12CreateDevice(currentAdapter, featureLevel, _uuidof(ID3D12Device), nullptr);//æœ€åä¸€ä¸ªå‚æ•°ä¼ é€’nullptrå°±å¯ä»¥åªæ£€æŸ¥é€‚é…å™¨ç‰¹æ€§è€Œä¸å»å®é™…åˆ›å»ºè®¾å¤‡å¯¹è±¡å¯¹è±¡
 		if (SUCCEEDED(hres))
 		{
 			adapter = currentAdapter;
 			break;
 		}
-		currentAdapter->Release();//ÊÍ·Å²»Ö§³ÖµÄÊÊÅäÆ÷
+		currentAdapter->Release();//é‡Šæ”¾ä¸æ”¯æŒçš„é€‚é…å™¨
 	}
 	return adapter;
 }
@@ -94,7 +111,7 @@ void LoadPipeline()
 	}
 #endif 
 
-ComPtr<IDXGIFactory4> mDxgiFactory;//¿ÉÒÔ´´½¨½»»»Á´ºÍÊÊÅäÆ÷
+ComPtr<IDXGIFactory4> mDxgiFactory;//å¯ä»¥åˆ›å»ºäº¤æ¢é“¾å’Œé€‚é…å™¨
 ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(mDxgiFactory.GetAddressOf())));
 D3D_FEATURE_LEVEL featureLevels[] =
 {
@@ -116,7 +133,7 @@ for (unsigned int i = 0; i < _countof(featureLevels); i++)
 }
 if (adapter != nullptr)
 {
-	//ÕÒµ½·ûºÏÒªÇóµÄÏÔÊ¾ÊÊÅäÆ÷²¢´´½¨device
+	//æ‰¾åˆ°ç¬¦åˆè¦æ±‚çš„æ˜¾ç¤ºé€‚é…å™¨å¹¶åˆ›å»ºdevice
 	D3D12CreateDevice(adapter, select_feature, IID_PPV_ARGS(device.GetAddressOf()));
 }
 D3D12_COMMAND_QUEUE_DESC queueDesc{};
@@ -140,23 +157,23 @@ ThrowIfFailed(mDxgiFactory->CreateSwapChainForHwnd(
 	nullptr,
 	nullptr,
 	&swapChain1
-));//APIµÄÏŞÖÆÊÇÖ»×¼Ê¹ÓÃIDXGISwapChain1×îµÍ°æ±¾
+));//APIçš„é™åˆ¶æ˜¯åªå‡†ä½¿ç”¨IDXGISwapChain1æœ€ä½ç‰ˆæœ¬
 ThrowIfFailed(swapChain1.As(&swapChain));
-frameIndex = swapChain->GetCurrentBackBufferIndex();//»ñÈ¡µ½µ±Ç°Ö¡µÄË÷Òı
+frameIndex = swapChain->GetCurrentBackBufferIndex();//è·å–åˆ°å½“å‰å¸§çš„ç´¢å¼•
 {
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-	rtvHeapDesc.NumDescriptors = FrameCount;//ÃèÊö·ûµÄÊıÁ¿
+	rtvHeapDesc.NumDescriptors = FrameCount;//æè¿°ç¬¦çš„æ•°é‡
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(rtvHeap.GetAddressOf())));
-	rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);//ÃèÊö·û´óĞ¡ÔöÁ¿
+	rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);//æè¿°ç¬¦å¤§å°å¢é‡
 }
 CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvHeap->GetCPUDescriptorHandleForHeapStart());
 for (unsigned int i = 0; i < FrameCount; i++)
 {
-	ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(renderTargets[i].GetAddressOf())));//½«½»»»Á´µ±ÖĞµÄºóÌ¨»º³åÇø½»¸ørenderTargets
-	device->CreateRenderTargetView(renderTargets[i].Get(), nullptr, rtvHandle);//½«ÃèÊö·û¶ÑµÄµÚÒ»¸öÃèÊö·ûÓÃÓÚ´´½¨RTV
-	rtvHandle.Offset(1, rtvDescriptorSize);//×ªµ½ÃèÊö·û¶ÑµÄÏÂÒ»¸öÃèÊö·û
+	ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(renderTargets[i].GetAddressOf())));//å°†äº¤æ¢é“¾å½“ä¸­çš„åå°ç¼“å†²åŒºäº¤ç»™renderTargets
+	device->CreateRenderTargetView(renderTargets[i].Get(), nullptr, rtvHandle);//å°†æè¿°ç¬¦å †çš„ç¬¬ä¸€ä¸ªæè¿°ç¬¦ç”¨äºåˆ›å»ºRTV
+	rtvHandle.Offset(1, rtvDescriptorSize);//è½¬åˆ°æè¿°ç¬¦å †çš„ä¸‹ä¸€ä¸ªæè¿°ç¬¦
 }
 ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(commandAllocator.GetAddressOf())));
 
@@ -164,8 +181,86 @@ ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID
 
 void LoadAsset()
 {
+	//åˆ›å»ºæ ¹ç­¾å
+	{
+		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+		rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		ComPtr<ID3DBlob> signature;
+		ComPtr<ID3DBlob> error;
+		ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+		if (error != nullptr)
+		{
+			std::cerr << "Error creating root signature: " << static_cast<const char*>(error->GetBufferPointer()) << std::endl;
+			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+		}
+		ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(rootSignature.GetAddressOf())));
+	}
+	{
+		ComPtr<ID3DBlob> vertexShader;
+		ComPtr<ID3DBlob> pixelShader;
+
+#if defined(_DEBUG)
+		UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+		UINT compileFlags = 0;
+#endif
+		ThrowIfFailed(D3DCompileFromFile(std::wstring(L"Assets/shaders.hlsl").c_str(), nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
+		ThrowIfFailed(D3DCompileFromFile(std::wstring(L"Assets/shaders.hlsl").c_str(), nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
+		D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+		{
+			{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,0,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+			{"COLOR",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,12,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
+		};//è¾“å…¥å¸ƒå±€æè¿°ç¬¦
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};//æ¸²æŸ“ç®¡çº¿çŠ¶æ€æè¿°ç¬¦
+		psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };//è¾“å…¥å¸ƒå±€
+		psoDesc.pRootSignature = rootSignature.Get();//æ ¹ç­¾å
+		psoDesc.VS = { vertexShader->GetBufferPointer(), vertexShader->GetBufferSize() };//é¡¶ç‚¹ç€è‰²å™¨
+		psoDesc.PS = { pixelShader->GetBufferPointer(), pixelShader->GetBufferSize() };//åƒç´ ç€è‰²å™¨
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);//å…‰æ …åŒ–çŠ¶æ€
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);//æ··åˆçŠ¶æ€
+		psoDesc.DepthStencilState.DepthEnable = FALSE;//ä¸å¯ç”¨æ·±åº¦æµ‹è¯•
+		psoDesc.DepthStencilState.StencilEnable = FALSE;//ä¸å¯ç”¨æ¨¡æ¿æµ‹è¯•
+		psoDesc.SampleMask = UINT_MAX;//é‡‡æ ·æ©ç 
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;//å›¾å…ƒæ‹“æ‰‘ç±»å‹
+		psoDesc.NumRenderTargets = 1;//æ¸²æŸ“ç›®æ ‡æ•°é‡
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;//æ¸²æŸ“ç›®æ ‡æ ¼å¼
+		psoDesc.SampleDesc.Count = 1;//é‡‡æ ·æè¿°ç¬¦
+		//psoDesc.SampleDesc.Quality = 0;//é‡‡æ ·è´¨é‡
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));//åˆ›å»ºæ¸²æŸ“ç®¡çº¿çŠ¶æ€å¯¹è±¡
+	}
+
+
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator.Get(), nullptr, IID_PPV_ARGS(commandList.GetAddressOf())));
 	ThrowIfFailed(commandList->Close());
+	{
+		Vertex triangleVertices[] =
+		{
+			{ { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+			{ { 0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+			{ { -0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+		};
+		const UINT vertexBufferSize = sizeof(triangleVertices);
+
+		CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);//ä¸Šä¼ å †ç±»å‹)
+		CD3DX12_RESOURCE_DESC resourceDes = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
+		//ç¼“å†²åŒºèµ„æºæè¿°ç¬¦
+		ThrowIfFailed(device->CreateCommittedResource(
+			&heapProperties,
+			D3D12_HEAP_FLAG_NONE,
+			&resourceDes,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(vertexBuffer.GetAddressOf())));//åˆ›å»ºç¼“å†²åŒºèµ„æº,vertexBufferæ˜¯å±äºå †ç®¡ç†çš„å†…å­˜
+		UINT8* pVertexDataBegin = nullptr;
+		CD3DX12_RANGE readRange(0, 0);//è¯»å–èŒƒå›´,æ˜¯ä¸ºäº†å‘Šè¯‰é©±åŠ¨ç¨‹åºæˆ‘ä»¬ä¸ä¼šè¯»å–è¿™ä¸ªå†…å­˜
+		ThrowIfFailed(vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));//æ˜ å°„ç¼“å†²åŒºåˆ°CPUå¯è¯»å†…å­˜
+		memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));//å°†é¡¶ç‚¹æ•°æ®å¤åˆ¶åˆ°ç¼“å†²åŒº
+		vertexBuffer->Unmap(0, nullptr);//å–æ¶ˆæ˜ å°„ç¼“å†²åŒºï¼Œç¬¬äºŒä¸ªå‚æ•°æ˜¯CD3DX12_RANGE
+
+		vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();//è·å–GPUè™šæ‹Ÿåœ°å€ï¼Œå› ä¸ºè¿™ä¸ªé¡¶ç‚¹ç¼“å†²è§†å›¾æ˜¯éœ€è¦ç»™GPUç”¨çš„
+		vertexBufferView.StrideInBytes = sizeof(Vertex);//é¡¶ç‚¹ç¼“å†²åŒºæ­¥é•¿
+		vertexBufferView.SizeInBytes = vertexBufferSize;
+	}
 	{
 		ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
 		fenceValue = 0;
@@ -179,17 +274,26 @@ void LoadAsset()
 }
 
 
-void PopulateCommendList()//Ìî³äÃüÁîÁĞ±í
+void PopulateCommendList()//å¡«å……å‘½ä»¤åˆ—è¡¨
 {
-	//´Ë´¦ÎÒ»³ÒÉ½»»»Á´²¢Ã»ÓĞÆğµ½×÷ÓÃ
-	ThrowIfFailed(commandAllocator->Reset());//ĞèÒªÏÈÖØÖÃÃüÁî·ÖÅäÆ÷²ÅÄÜÔÙÖØÖÃÃüÁîÁĞ±í
-	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), pipelineState.Get()));//ÃüÁî¶ÓÁĞĞèÒªÊ¹ÓÃÃüÁî·ÖÅäÆ÷µÄÄÚ´æ²ÅÄÜÉÏ´«ÃüÁî¡¢
+	ThrowIfFailed(commandAllocator->Reset());//éœ€è¦å…ˆé‡ç½®å‘½ä»¤åˆ†é…å™¨æ‰èƒ½å†é‡ç½®å‘½ä»¤åˆ—è¡¨
+	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), pipelineState.Get()));//å‘½ä»¤é˜Ÿåˆ—éœ€è¦ä½¿ç”¨å‘½ä»¤åˆ†é…å™¨çš„å†…å­˜æ‰èƒ½ä¸Šä¼ å‘½ä»¤ã€
+
+	commandList->SetGraphicsRootSignature(rootSignature.Get());//åœ¨å‘½ä»¤åˆ—è¡¨ä¸­è®¾ç½®æ ¹ç­¾å
+	commandList->RSSetViewports(1, &viewport);
+	commandList->RSSetScissorRects(1, &scissorRect);//è®¾ç½®è§†å£å’Œè£å‰ªçŸ©å½¢
+
+
 	D3D12_RESOURCE_BARRIER resBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-	commandList->ResourceBarrier(1, &resBarrier);//1Îª±¾´ÎÌá½»µÄ×ÊÔ´ÆÁÕÏÊı
+	commandList->ResourceBarrier(1, &resBarrier);//1ä¸ºæœ¬æ¬¡æäº¤çš„èµ„æºå±éšœæ•°
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, rtvDescriptorSize);
-	float clearColor[] = { color[0],color[1],color[2],color[3] };
+	const float clearColor[] = { color[0], color[1], color[2], 1.0f };
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+	commandList->DrawInstanced(3, 1, 0, 0);
 
 	resBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 	commandList->ResourceBarrier(1, &resBarrier);
@@ -204,9 +308,9 @@ void WaitForPreviousFrame()
 	if (fence->GetCompletedValue() < tempFenceValue)
 	{
 		ThrowIfFailed(fence->SetEventOnCompletion(tempFenceValue, fenceEvent));
-		WaitForSingleObject(fenceEvent, INFINITE);//µÈ´ıÊÂ¼şÍê³É,ÎŞÏß³Ì×èÈû
+		WaitForSingleObject(fenceEvent, INFINITE);//ç­‰å¾…äº‹ä»¶å®Œæˆ,æ— çº¿ç¨‹é˜»å¡
 	}
-	frameIndex = swapChain->GetCurrentBackBufferIndex();//»ñÈ¡µ±Ç°Ö¡Ë÷Òı
+	frameIndex = swapChain->GetCurrentBackBufferIndex();//è·å–å½“å‰å¸§ç´¢å¼•
 }
 
 
@@ -258,7 +362,7 @@ void OnRender()
 	PopulateCommendList();
 	ID3D12CommandList* ppCommandLists[] = { commandList.Get() };
 	commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-	ThrowIfFailed(swapChain->Present(1, 0)); //½»»»Á´µÄPresent·½·¨£¬µÚÒ»¸ö²ÎÊı1±íÊ¾´¹Ö±Í¬²½£¬0±íÊ¾Ã»ÓĞÆäËûÑ¡Ïî£¬µÚ¶ş¸ö²ÎÊıÍ¨³£Ö±½ÓÉèÖÃ0
+	ThrowIfFailed(swapChain->Present(1, 0)); //äº¤æ¢é“¾çš„Presentæ–¹æ³•ï¼Œç¬¬ä¸€ä¸ªå‚æ•°1è¡¨ç¤ºå‚ç›´åŒæ­¥ï¼Œ0è¡¨ç¤ºæ²¡æœ‰å…¶ä»–é€‰é¡¹ï¼Œç¬¬äºŒä¸ªå‚æ•°é€šå¸¸ç›´æ¥è®¾ç½®0
 	WaitForPreviousFrame();
 }
 
@@ -287,7 +391,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 }
 
 
-int CALLBACK WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
+int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
 	WNDCLASSEX windowClass = { 0 };
 	windowClass.cbSize = sizeof(WNDCLASSEX);
