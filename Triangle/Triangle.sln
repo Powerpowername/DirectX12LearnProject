@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Triangle", "Triangle.vcxpro
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Rectangle", "..\Rectangle\Rectangle.vcxproj", "{04C9ED70-6608-4109-9B4C-930362B00BC4}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DepthTest", "..\DepthTest\DepthTest.vcxproj", "{37B4C4F7-116E-4651-8AB0-5C513A27196A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -31,6 +33,14 @@ Global
 		{04C9ED70-6608-4109-9B4C-930362B00BC4}.Release|x64.Build.0 = Release|x64
 		{04C9ED70-6608-4109-9B4C-930362B00BC4}.Release|x86.ActiveCfg = Release|Win32
 		{04C9ED70-6608-4109-9B4C-930362B00BC4}.Release|x86.Build.0 = Release|Win32
+		{37B4C4F7-116E-4651-8AB0-5C513A27196A}.Debug|x64.ActiveCfg = Debug|x64
+		{37B4C4F7-116E-4651-8AB0-5C513A27196A}.Debug|x64.Build.0 = Debug|x64
+		{37B4C4F7-116E-4651-8AB0-5C513A27196A}.Debug|x86.ActiveCfg = Debug|Win32
+		{37B4C4F7-116E-4651-8AB0-5C513A27196A}.Debug|x86.Build.0 = Debug|Win32
+		{37B4C4F7-116E-4651-8AB0-5C513A27196A}.Release|x64.ActiveCfg = Release|x64
+		{37B4C4F7-116E-4651-8AB0-5C513A27196A}.Release|x64.Build.0 = Release|x64
+		{37B4C4F7-116E-4651-8AB0-5C513A27196A}.Release|x86.ActiveCfg = Release|Win32
+		{37B4C4F7-116E-4651-8AB0-5C513A27196A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
