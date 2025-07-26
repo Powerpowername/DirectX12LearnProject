@@ -38,7 +38,7 @@ ComPtr<ID3D12Resource> vertexBuffer;
 D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 ComPtr<ID3D12Resource> indexBuffer;
 D3D12_INDEX_BUFFER_VIEW indexBufferView;
-ComPtr<ID3D12Resource> depthStencilBuffer;
+ComPtr<ID3D12Resource> depthStencilBuffer;//深度模板缓冲区
 //同步对象
 UINT frameIndex;//当前帧索引
 HANDLE fenceEvent;
@@ -321,8 +321,12 @@ void LoadAsset()
 			&tex2D,
 			D3D12_RESOURCE_STATE_DEPTH_WRITE,
 			&depthOptimizedClearValue,
-			IID_PPV_ARGS(&depthStencilBuffer)));
-
+			IID_PPV_ARGS(&depthStencilBuffer)));//在默认堆上创建深度模板缓冲区资源
+		//此处建立的深度模板缓冲区视图是在CPU上创建的，GPU可以直接使用
+		/*
+		*描述符堆是一个内存区域，用于存储描述符（如渲染目标视图、深度模板视图等）。
+		* GPU需要使用描述符解析数据的时候就会从描述符堆中获取相应的描述符。
+		*/
 		device->CreateDepthStencilView(depthStencilBuffer.Get(), &depthStencilDesc, dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
 	}
