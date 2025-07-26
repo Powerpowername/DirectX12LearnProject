@@ -184,3 +184,5 @@ CPU 可以直接读写（通过 Map() 映射后操作），GPU 也可以读取�
 ![alt text](READMResouce\heap.png)
 ## 默认堆，上传堆，回读堆
 ![alt text](READMResouce\heap-1.png)
+
+注：着色器可见资源由根签名和描述符表管理。非着色器可见资源由命令列表直接管理。
