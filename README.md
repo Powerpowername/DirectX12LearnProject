@@ -186,3 +186,95 @@ CPU 可以直接读写（通过 Map() 映射后操作），GPU 也可以读取�
 ![alt text](READMResouce\heap-1.png)
 
 注：着色器可见资源由根签名和描述符表管理。非着色器可见资源由命令列表直接管理。
+# 几种堆资源的创建与使用
+## 描述符堆（RTV,DSV,CSV等）
+```cpp
+//渲染缓冲区，渲染对象，后面需要将交换链中的内存交给他管理
+ComPtr<ID3D12Resource> renderTargets[FrameCount];
+
+ComPtr<ID3D12DescriptorHeap> rtvHeap;//rtv描述符堆
+//创建描述符堆描述结构
+D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+rtvHeapDesc.NumDescriptors = FrameCount;//描述符的数量
+rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;//指定堆类型
+rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+//创建描述符堆
+ThrowIfFailed(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(rtvHeap.GetAddressOf())));
+//描述符大小增量，供后续寻找描述符使用
+rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+//找到描述符堆的起始位置
+CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvHeap->GetCPUDescriptorHandleForHeapStart());
+//使用CreateRenderTargetView根据资源在描述符堆中创建描述符
+for (unsigned int i = 0; i < FrameCount; i++)
+{
+    //因为后台缓冲区是已经存在的资源，所以并不需要CreateCommittedResource显式创建资源，但是深度缓冲区等需要
+    /*
+    *	ThrowIfFailed(device->CreateCommittedResource(
+	*	&heapProperties2,//一般在默认堆上
+	*	D3D12_HEAP_FLAG_NONE,
+	*	&tex2D,
+	*	D3D12_RESOURCE_STATE_DEPTH_WRITE,
+	*	&depthOptimizedClearValue,
+	*	IID_PPV_ARGS(&depthStencilBuffer)));//在默认堆上创建深度模板缓冲区资源
+    *   device->CreateDepthStencilView(depthStencilBuffer.Get(), &depthStencilDesc, dsvHeap->GetCPUDescriptorHandleForHeapStart());
+    */
+	ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(renderTargets[i].GetAddressOf())));//将交换链当中的后台缓冲区交给renderTargets
+	device->CreateRenderTargetView(renderTargets[i].Get(), nullptr, rtvHandle);//将描述符堆的第一个描述符用于创建RTV
+	rtvHandle.Offset(1, rtvDescriptorSize);//转到描述符堆的下一个描述符
+}
+//注：需要主动处理屏障，变换帧状态
+D3D12_RESOURCE_BARRIER resBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+commandList->ResourceBarrier(1, &resBarrier);//1为本次提交的资源屏障数
+/*
+*   //着色器可见资源由根签名中的根参数来访问，着色器不可见资源由命令列表直接帮定
+*   //此处需要显示传递常量缓冲区堆顶指针
+*   ID3D12DescriptorHeap* ppHeaps[] = { cbvHeap.Get() };
+*   commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);//设置描述符堆,这个堆是可见的，GPU可以直接访问
+*   commandList->SetGraphicsRootDescriptorTable(0, cbvHeap->GetGPUDescriptorHandleForHeapStart());
+*/
+//找到后台第一个渲染帧
+rtvHandle(rtvHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, rtvDescriptorSize);
+commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+resBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+commandList->ResourceBarrier(1, &resBarrier);
+ThrowIfFailed(commandList->Close());
+```
+# 上传堆
+```cpp
+//顶点缓冲区与定点视图
+ComPtr<ID3D12Resource> vertexBuffer;
+D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
+//数据尺寸
+const UINT vertexBufferSize = sizeof(triangleVertices);
+//创建资源
+CD3DX12_RESOURCE_DESC vertexBufferResourceDes = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
+//创建顶点缓冲区资源
+CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);//上传堆类型
+ThrowIfFailed(device->CreateCommittedResource(
+	&heapProperties, 
+	D3D12_HEAP_FLAG_NONE,
+	&vertexBufferResourceDes,
+	D3D12_RESOURCE_STATE_GENERIC_READ,
+	nullptr,
+	IID_PPV_ARGS(vertexBuffer.GetAddressOf())));//创建缓冲区资源,vertexBuffer是属于堆管理的内存
+//上传堆的通用操做
+UINT8* pDataBegin;
+CD3DX12_RANGE readRange(0, 0);//读取范围,是为了告诉驱动程序我们不会读取这个内存
+ThrowIfFailed(vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pDataBegin)));//映射缓冲区到CPU可读内存
+memcpy(pDataBegin, triangleVertices, sizeof(triangleVertices));//将顶点数据复制到缓冲区
+vertexBuffer->Unmap(0, nullptr);//取消映射缓冲区，第二个参数是CD3DX12_RANGE
+
+vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();//获取GPU虚拟地址，因为这个顶点缓冲视图是需要给GPU用的
+vertexBufferView.StrideInBytes = sizeof(Vertex);//顶点缓冲区步长
+vertexBufferView.SizeInBytes = vertexBufferSize;
+//设置顶点缓冲区视图，
+//注：需要主动处理屏障，变换帧状态
+D3D12_RESOURCE_BARRIER resBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+commandList->ResourceBarrier(1, &resBarrier);//1为本次提交的资源屏障数
+commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+resBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+commandList->ResourceBarrier(1, &resBarrier);
+ThrowIfFailed(commandList->Close());
+```
