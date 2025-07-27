@@ -259,6 +259,7 @@ void LoadAsset()
 		psoDesc.NumRenderTargets = 1;//渲染目标数量
 		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;//渲染目标格式
 		psoDesc.SampleDesc.Count = 1;//采样描述符
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;//深度模板格式,加上了就可以避免debug报错
 		//psoDesc.SampleDesc.Quality = 0;//采样质量
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));//创建渲染管线状态对象
 	}
@@ -289,10 +290,10 @@ void LoadAsset()
 		const UINT vertexBufferSize = sizeof(triangleVertices);
 		const UINT indexBufferSize = sizeof(triangleIndexs);
 
-		CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);//上传堆类型)
+		CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);//上传堆类型
 		CD3DX12_RESOURCE_DESC vertexBufferResourceDes = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
 		CD3DX12_RESOURCE_DESC indexBufferResourceDes = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
-		//缓冲区资源描述符
+		//创建顶点缓冲区资源和索引缓冲区资源
 		ThrowIfFailed(device->CreateCommittedResource(
 			&heapProperties,
 			D3D12_HEAP_FLAG_NONE,
@@ -410,11 +411,11 @@ void PopulateCommendList()//填充命令列表
 	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
 	const float clearColor[] = { color[0], color[1], color[2], 1.0f };
-	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->ClearDepthStencilView(dsvHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
 	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetIndexBuffer(&indexBufferView);
 	commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);//第一个绿色四边形
 	commandList->DrawIndexedInstanced(6, 1, 0, 4, 0);//第二个蓝色四边形,使用起始顶点偏移来服用索引
