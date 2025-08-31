@@ -133,6 +133,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="d3dApp.hpp" />
     <ClInclude Include="d3dUtil.h" />
     <ClInclude Include="MathHelper.h" />
     <ClInclude Include="Object.h" />
