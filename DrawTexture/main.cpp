@@ -248,6 +248,9 @@ public:
 	void CopyTextureDataToDefaultResource();
 	// 最终创建 SRV 着色器资源描述符，用于描述 DefaultResource 为一块纹理
 	void CreateSRV();
+	// 创建根签名
+	void CreateRootSignature();
+
 };
 
 inline void DX12Engine::InitWindow(HINSTANCE hins)
@@ -651,14 +654,36 @@ inline void DX12Engine::CreateSRV()
 {
 	// SRV 描述符信息结构体
 	CD3DX12_SHADER_RESOURCE_VIEW_DESC SRVDescriptorDesc = {};
+	// SRV 描述符类型，这里我们指定 Texture2D 2D纹理
+	SRVDescriptorDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	// SRV 描述符的格式也要填纹理格式
+	SRVDescriptorDesc.Format = TextureFormat;
+	// 纹理采样后每个纹理像素 RGBA 分量的顺序，D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING 表示纹理采样后分量顺序不改变
+	SRVDescriptorDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	SRVDescriptorDesc.Texture2D.MipLevels =1;	// 采样纹理的最高 Mipmap 层级，我们没有 Mipmap，所以填 0
+	SRVDescriptorDesc.Texture2D.MostDetailedMip = 0; // 采样纹理的最详细 Mipmap 层级，我们没有 Mipmap，所以填 0
 
+	//只能用CPU创建描述符，因为GPU没有这个能力（设计成这样的）,描述符在描述符堆中是连续存储的，这片存储空间在显存中
+	SRV_CPUHandle = m_SRVHeap->GetCPUDescriptorHandleForHeapStart(); // 获取 SRV 描述符堆指向首描述符的 CPU 句柄
+	// 创建 SRV 描述符，描述 DefaultResource 这块资源为一块纹理	
+	m_D3D12Device->CreateShaderResourceView(m_DefaultTextureResource.Get(), &SRVDescriptorDesc, SRV_CPUHandle);
 
-
-
-
-	//只能用CPU创建描述符，因为GPU没有这个能力（设计成这样的）
-
-
-
+	// 获取 SRV 描述符的 GPU 映射句柄，用于命令列表设置 SRVHeap 描述符堆，着色器引用 SRV 描述符找纹理资源
+	SRV_GPUHandle = m_SRVHeap->GetGPUDescriptorHandleForHeapStart();
 
 }
+
+void DX12Engine::CreateRootSignature()
+{
+	ComPtr<ID3DBlob> SignatureBlob;			// 根签名字节码
+	ComPtr<ID3DBlob> ErrorBlob;				// 错误字节码，根签名创建失败时用 OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer()); 可以获取报错信息
+
+	D3D12_DESCRIPTOR_RANGE SRVDescriptorRangeDesc = {};	// Range 描述符范围结构体，一块 Range 表示一堆连续的同类型描述符
+	SRVDescriptorRangeDesc.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;		// Range 类型，这里指定 SRV 类型，CBV_SRV_UAV 在这里分流
+	SRVDescriptorRangeDesc.NumDescriptors = 1;								// Range 里面的描述符数量 N，一次可以绑定多个描述符到多个寄存器槽上
+	SRVDescriptorRangeDesc.BaseShaderRegister = 0;							// Range 要绑定的起始寄存器槽编号 i，绑定范围是 [s(i),s(i+N)]，我们绑定 s0
+	SRVDescriptorRangeDesc.RegisterSpace = 0;								// Range 要绑定的寄存器空间，默认都是 0
+	SRVDescriptorRangeDesc.OffsetInDescriptorsFromTableStart = 0;			// Range 到根描述表开头的偏移量 (单位：描述符)，根签名需要用它来寻找 Range 的地址，我们这填 0 就行
+
+}
+
