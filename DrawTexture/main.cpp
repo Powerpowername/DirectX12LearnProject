@@ -181,10 +181,10 @@ private:
 	ComPtr<ID3D12Fence> m_Fence;							// 围栏
 	UINT64 FenceValue = 0;									// 用于围栏等待的围栏值
 	HANDLE RenderEvent = NULL;								// GPU 渲染事件
-	CD3DX12_RESOURCE_BARRIER beg_barrier = {};				// 渲染开始的资源屏障，呈现 -> 渲染目标
-	CD3DX12_RESOURCE_BARRIER end_barrier = {};				// 渲染结束的资源屏障，渲染目标 -> 呈现
+	CD3DX12_RESOURCE_BARRIER barrier = {};				// 渲染开始的资源屏障，呈现 -> 渲染目标
+	//CD3DX12_RESOURCE_BARRIER end_barrier = {};				// 渲染结束的资源屏障，渲染目标 -> 呈现
 
-	std::wstring TextureFilename = L"diamond_ore.png";		// 纹理文件名 (这里用的是相对路径)
+	std::wstring TextureFilename = L"./diamond_ore.png";		// 纹理文件名 (这里用的是相对路径)
 	ComPtr<IWICImagingFactory> m_WICFactory;				// WIC 工厂
 	ComPtr<IWICBitmapDecoder> m_WICBitmapDecoder;			// 位图解码器
 	ComPtr<IWICBitmapFrameDecode> m_WICBitmapDecodeFrame;	// 由解码器得到的单个位图帧
@@ -250,6 +250,18 @@ public:
 	void CreateSRV();
 	// 创建根签名
 	void CreateRootSignature();
+	// 创建渲染管线状态对象 (Pipeline State Object, PSO)
+	void CreatePSO();
+	// 创建顶点资源
+	void CreateVertexResource();
+	// 渲染
+	void Render();
+	// 渲染循环
+	void RenderLoop();
+	// 回调函数
+	static LRESULT CALLBACK CallBackFunc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	// 运行窗口
+	static void Run(HINSTANCE hins);
 
 };
 
@@ -416,13 +428,13 @@ void DX12Engine::CreateFenceAndBarrier()
 	m_D3D12Device->CreateFence(FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence));
 
 
-	// 设置资源屏障
-	// beg_barrier 起始屏障：Present 呈现状态 -> Render Target 渲染目标状态
-	beg_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;					// 指定类型为转换屏障	
-	beg_barrier.Transition(m_RenderTarget[FrameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-	// end_barrier 结束屏障：Render Target 渲染目标状态 -> Present 呈现状态
-	end_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	end_barrier.Transition(m_RenderTarget[FrameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+	//// 设置资源屏障
+	//// beg_barrier 起始屏障：Present 呈现状态 -> Render Target 渲染目标状态
+	//beg_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;					// 指定类型为转换屏障	
+	//beg_barrier.Transition(m_RenderTarget[FrameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	//// end_barrier 结束屏障：Render Target 渲染目标状态 -> Present 呈现状态
+	//end_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	//end_barrier.Transition(m_RenderTarget[FrameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 }
 
 bool DX12Engine::LoadTextureFromFile()
@@ -673,17 +685,333 @@ inline void DX12Engine::CreateSRV()
 
 }
 
-void DX12Engine::CreateRootSignature()
+inline void DX12Engine::CreateRootSignature()
 {
 	ComPtr<ID3DBlob> SignatureBlob;			// 根签名字节码
 	ComPtr<ID3DBlob> ErrorBlob;				// 错误字节码，根签名创建失败时用 OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer()); 可以获取报错信息
 
-	D3D12_DESCRIPTOR_RANGE SRVDescriptorRangeDesc = {};	// Range 描述符范围结构体，一块 Range 表示一堆连续的同类型描述符
+	CD3DX12_DESCRIPTOR_RANGE SRVDescriptorRangeDesc = {};	// Range 描述符范围结构体，一块 Range 表示一堆连续的同类型描述符
 	SRVDescriptorRangeDesc.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;		// Range 类型，这里指定 SRV 类型，CBV_SRV_UAV 在这里分流
 	SRVDescriptorRangeDesc.NumDescriptors = 1;								// Range 里面的描述符数量 N，一次可以绑定多个描述符到多个寄存器槽上
 	SRVDescriptorRangeDesc.BaseShaderRegister = 0;							// Range 要绑定的起始寄存器槽编号 i，绑定范围是 [s(i),s(i+N)]，我们绑定 s0
 	SRVDescriptorRangeDesc.RegisterSpace = 0;								// Range 要绑定的寄存器空间，默认都是 0
 	SRVDescriptorRangeDesc.OffsetInDescriptorsFromTableStart = 0;			// Range 到根描述表开头的偏移量 (单位：描述符)，根签名需要用它来寻找 Range 的地址，我们这填 0 就行
 
+	CD3DX12_ROOT_DESCRIPTOR_TABLE RootDescriptorTableDesc{};                // RootDescriptorTable 根描述表信息结构体，一个 Table 可以有多个 Range
+	RootDescriptorTableDesc.pDescriptorRanges = &SRVDescriptorRangeDesc;	// Range 描述符范围指针
+	RootDescriptorTableDesc.NumDescriptorRanges = 1;						// 根描述表中 Range 的数量
+
+
+	CD3DX12_ROOT_PARAMETER RootParameter{};
+	RootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;	// 根参数对像素着色器可见
+	RootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE; // 根参数类型，这里指定为描述符表
+	RootParameter.DescriptorTable = RootDescriptorTableDesc; // 根参数的描述符表信息
+
+	CD3DX12_STATIC_SAMPLER_DESC StaticSamplerDesc{};	// 静态采样器描述符结构体
+	StaticSamplerDesc.ShaderRegister = 0;				// 静态采样器要绑定的寄存器槽编号 s0
+	StaticSamplerDesc.RegisterSpace = 0;				// 静态采样器要绑定的寄存器空间，默认都是 0
+	StaticSamplerDesc.Filter = D3D12_FILTER_COMPARISON_MIN_MAG_MIP_POINT;	// 纹理过滤类型，这里我们直接选 邻近点采样 就行
+	StaticSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;			// 在 U 方向上的纹理寻址方式
+	StaticSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;			// 在 V 方向上的纹理寻址方式
+	StaticSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;			// 在 W 方向上的纹理寻址方式 (3D 纹理会用到)
+	StaticSamplerDesc.MinLOD = 0;											// 最小 LOD 细节层次，这里我们默认填 0 就行
+	StaticSamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;							// 最大 LOD 细节层次，这里我们默认填 D3D12_FLOAT32_MAX (没有 LOD 上限)
+	StaticSamplerDesc.MipLODBias = 0;										// 基础 Mipmap 采样偏移量，我们这里我们直接填 0 就行
+	StaticSamplerDesc.MaxAnisotropy = 1;									// 各向异性过滤等级，我们不使用各向异性过滤，需要默认填 1
+	StaticSamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;			// 这个是用于阴影贴图的，我们不需要用它，所以填 D3D12_COMPARISON_FUNC_NEVER
+
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSianatureDesc{};	// 根签名描述符结构体
+	rootSianatureDesc.NumParameters = 1;				// 根参数数量，我们这里只有一个根参数
+	rootSianatureDesc.pParameters = &RootParameter;	// 根参数指针
+	rootSianatureDesc.NumStaticSamplers = 1;			// 静态采样器数量，我们这里只有一个静态采样器
+	rootSianatureDesc.pStaticSamplers = &StaticSamplerDesc; // 静态采样器指针
+	// 根签名标志，可以设置渲染管线不同阶段下的输入参数状态。注意这里！我们要从 IA 阶段输入顶点数据，所以要通过根签名，设置渲染管线允许从 IA 阶段读入数据
+	rootSianatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	// 编译根签名，让根签名先编译成 GPU 可读的二进制字节码
+	D3D12SerializeRootSignature(&rootSianatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SignatureBlob, &ErrorBlob);
+	if (ErrorBlob)		// 如果根签名编译出错，ErrorBlob 可以提供报错信息
+	{
+		OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
+		OutputDebugStringA("\n");
+	}
+
+
+	// 用这个二进制字节码创建根签名对象
+	m_D3D12Device->CreateRootSignature(0, SignatureBlob->GetBufferPointer(), SignatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature));
+
+
 }
 
+inline void DX12Engine::CreatePSO()
+{
+	// PSO 描述符结构体
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC  PSODesc{};
+
+	// Input Assembler 输入装配阶段
+	D3D12_INPUT_LAYOUT_DESC InputLayoutDesc{};	// 输入布局描述符结构体
+	D3D12_INPUT_ELEMENT_DESC InputElementDesc[]{
+		{"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,0,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+		{"TEXCOORD",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,16,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
+	};
+
+	InputLayoutDesc.NumElements = _countof(InputElementDesc); // 输入元素数量
+	InputLayoutDesc.pInputElementDescs = InputElementDesc; // 输入元素指针
+	PSODesc.InputLayout = InputLayoutDesc; // 将输入布局描述符赋值给 PSO 描述符
+
+	ComPtr<ID3DBlob> VertexShaderBlob;		// 顶点着色器二进制字节码
+	ComPtr<ID3DBlob> PixelShaderBlob;		// 像素着色器二进制字节码
+	ComPtr<ID3DBlob> ErrorBlob;				// 错误字节码，根签名创建失败时用 OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer()); 可以获取报错信息
+
+	// 编译顶点着色器 Vertex Shader
+	D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\DrawTexture\\shader.hlsl", nullptr, nullptr, "VSMain", "vs_5_1", NULL, NULL, &VertexShaderBlob, &ErrorBlob);
+	if (ErrorBlob)		// 如果着色器编译出错，ErrorBlob 可以提供报错信息
+	{
+		OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
+		OutputDebugStringA("\n");
+	}
+
+	// 编译像素着色器 Pixel Shader
+	D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\DrawTexture\\shader.hlsl", nullptr, nullptr, "PSMain", "ps_5_1", NULL, NULL, &PixelShaderBlob, &ErrorBlob);
+	if (ErrorBlob)		// 如果着色器编译出错，ErrorBlob 可以提供报错信息
+	{
+		OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
+		OutputDebugStringA("\n");
+	}
+
+	PSODesc.VS.pShaderBytecode = VertexShaderBlob->GetBufferPointer(); // 顶点着色器字节码指针	
+	PSODesc.VS.BytecodeLength = VertexShaderBlob->GetBufferSize();	// 顶点着色器字节码大小
+	PSODesc.PS.pShaderBytecode = PixelShaderBlob->GetBufferPointer(); // 像素着色器字节码指针
+	PSODesc.PS.BytecodeLength = PixelShaderBlob->GetBufferSize();	// 像素着色器字节码大小
+	// 光栅化阶段
+	PSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;			// 指定背面剔除	
+	PSODesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;			// 指定实心填充
+	
+	// 第一次设置根签名！本次设置是将根签名与 PSO 绑定，设置渲染管线的输入参数状态
+	PSODesc.pRootSignature = m_RootSignature.Get();
+
+	PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // 指定图元类型，这里我们指定三角形	
+	PSODesc.NumRenderTargets = 1;												// 指定渲染目标数量，我们只有一个渲染目标	
+	PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;						// 指定渲染目标格式，我们的交换链格式是 DXGI_FORMAT_R8G8B8A8_UNORM
+	PSODesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;				// 指定不启用混合
+	// 设置采样次数，我们这里填 1 就行
+	PSODesc.SampleDesc.Count = 1;
+	// 设置采样掩码，这个是用于多重采样的，我们直接填全采样 (UINT_MAX，就是将 UINT 所有的比特位全部填充为 1) 就行
+	PSODesc.SampleMask = UINT_MAX;
+	// 创建 PSO 对象
+	m_D3D12Device->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(m_PipelineStateObject.GetAddressOf()));
+
+}
+
+inline void DX12Engine::CreateVertexResource()
+{
+	// CPU 高速缓存上的顶点信息数组，注意这里的顶点坐标都是 NDC 空间坐标
+	VERTEX vertexs[6] =
+	{
+		{{-0.75f, 0.75f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+		{{0.75f, 0.75f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+		{{0.75f, -0.75f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+		{{-0.75f, 0.75f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+		{{0.75f, -0.75f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+		{{-0.75f, -0.75f, 0.0f, 1.0f}, {0.0f, 1.0f}}
+	};
+
+	CD3DX12_RESOURCE_DESC VertexDesc{};	// 顶点缓冲区资源描述符结构体
+	VertexDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;		// 资源类型，上传堆的资源类型都是 buffer 缓冲
+	VertexDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;			// 资源布局，指定资源的存储方式，上传堆的资源都是 row major 按行线性存储
+	VertexDesc.Width = sizeof(vertexs);							// 资源宽度，上传堆的资源宽度是资源的总大小
+	VertexDesc.Height = 1;										// 资源高度，上传堆仅仅是传递线性资源的，所以高度必须为 1
+	VertexDesc.Format = DXGI_FORMAT_UNKNOWN;					// 资源格式，上传堆资源的格式必须为 UNKNOWN
+	VertexDesc.DepthOrArraySize = 1;							// 资源深度，这个是用于纹理数组和 3D 纹理的，上传堆资源必须为 1
+	VertexDesc.MipLevels = 1;									// Mipmap 等级，这个是用于纹理的，上传堆资源必须为 1
+	VertexDesc.SampleDesc.Count = 1;							// 资源采样次数，上传堆资源都是填 1
+
+	// 上传堆属性的结构体，上传堆位于 CPU 和 GPU 的共享内存
+	CD3DX12_HEAP_PROPERTIES UploadHeapDesc{ D3D12_HEAP_TYPE_UPLOAD };
+	// 创建顶点缓冲区资源
+	m_D3D12Device->CreateCommittedResource(
+		&UploadHeapDesc,					// 堆属性
+		D3D12_HEAP_FLAG_NONE,
+		&VertexDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(m_VertexResource.GetAddressOf())
+	);
+
+	BYTE* TransferPointer = nullptr;	// 用于传递资源的指针
+	// Map 开始映射，Map 方法会得到上传堆资源的地址 (在共享内存上)，传递给指针，这样我们就能通过 memcpy 操作复制数据了
+	m_VertexResource->Map(0, nullptr, reinterpret_cast<void**>(&TransferPointer));
+	// 复制顶点数据到顶点缓冲区资源上 (CPU 高速缓存 -> 共享内存)
+	memcpy(TransferPointer, vertexs, sizeof(vertexs));
+	// Unmap 结束映射，因为我们无法直接读写默认堆资源，需要上传堆复制到那里，在复制之前，我们需要先结束映射，让上传堆处于只读状态
+	m_VertexResource->Unmap(0, nullptr);
+
+	// 创建顶点缓冲区视图
+	// 顶点缓冲区资源的 GPU 虚拟地址
+	VertexBufferView.BufferLocation = m_VertexResource->GetGPUVirtualAddress();
+	// 每个顶点的大小 (单位：字节)
+	VertexBufferView.StrideInBytes = sizeof(VERTEX);
+	// 顶点缓冲区的总大小 (单位：字节)
+	VertexBufferView.SizeInBytes = sizeof(vertexs);
+
+
+}
+
+inline void DX12Engine::Render()
+{
+	// 重置命令分配器
+	m_CommandAllocator->Reset();
+	// 重置命令列表，设置初始状态 PSO
+	m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
+	//获取RTV堆首句柄
+	RTVHandle = m_RTVHeap->GetCPUDescriptorHandleForHeapStart();
+	FrameIndex = m_DXGISwapChain->GetCurrentBackBufferIndex(); // 获取当前帧索引,其实是后台缓冲中第一个可用帧的索引
+	// 根据当前帧索引偏移 RTV 堆句柄
+	RTVHandle.ptr += FrameIndex * RTVDescriptorSize;
+
+	// 资源屏障，将当前帧的渲染目标从 PRESENT 状态转换为 RENDER_TARGET 状态
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		m_RenderTarget[FrameIndex].Get(),
+		D3D12_RESOURCE_STATE_PRESENT,//当前状态
+		D3D12_RESOURCE_STATE_RENDER_TARGET //要转换的状态
+	);
+
+	m_CommandList->ResourceBarrier(1, &barrier); // 设置资源屏障
+	// 第二次设置根签名！本次设置将会检查 渲染管线绑定的根签名 与 这里的根签名 是否匹配
+	// 以及根签名指定的资源是否被正确绑定，检查完毕后会进行简单的映射
+	m_CommandList->SetGraphicsRootSignature(m_RootSignature.Get());
+	// 设置渲染管线状态，可以在上面 m_CommandList->Reset() 的时候直接在第二个参数设置 PSO
+	m_CommandList->SetPipelineState(m_PipelineStateObject.Get());
+	// 设置视口 (光栅化阶段)，用于光栅化里的屏幕映射
+	m_CommandList->RSSetViewports(1, &viewPort);
+	// 设置裁剪矩形 (光栅化阶段)
+	m_CommandList->RSSetScissorRects(1, &ScissorRect);
+	// 设置渲染目标 (输出合并阶段)
+	m_CommandList->OMSetRenderTargets(1, &RTVHandle, false, nullptr);
+	// 清空当前渲染目标的背景为天蓝色
+	m_CommandList->ClearRenderTargetView(RTVHandle, DirectX::Colors::SkyBlue, 0, nullptr);
+	// 用于设置描述符堆用的临时 ID3D12DescriptorHeap 数组
+	ID3D12DescriptorHeap* _temp_DescriptorHeaps[] = { m_SRVHeap.Get() };
+	// 设置描述符堆，着色器才能引用描述符
+	m_CommandList->SetDescriptorHeaps(1, _temp_DescriptorHeaps);
+	// 设置根参数 0 的描述符表，根参数 0 是一个描述符表，描述符表里有一个 Range，Range 里有一个 SRV 描述符
+	m_CommandList->SetGraphicsRootDescriptorTable(0, SRV_GPUHandle);
+	// 设置图元拓扑 (输入装配阶段)，我们这里设置三角形列表
+	m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	// 设置顶点缓冲区 (输入装配阶段)
+	m_CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
+	// 绘制图元
+	m_CommandList->DrawInstanced(6, 1, 0, 0);
+	// 资源屏障，将当前帧的渲染目标从 RENDER_TARGET 状态转换为 PRESENT 状态
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		m_RenderTarget[FrameIndex].Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PRESENT
+	);
+	m_CommandList->ResourceBarrier(1, &barrier); // 设置资源屏障
+
+	// 关闭命令列表，Record 录制状态 -> Close 关闭状态，命令列表只有关闭才可以提交
+	m_CommandList->Close();
+
+	// 用于传递命令用的临时 ID3D12CommandList 数组
+	ID3D12CommandList* _temp_cmdlists[] = { m_CommandList.Get() };
+
+	m_CommandQueue->ExecuteCommandLists(1, _temp_cmdlists); // 提交命令，GPU 开始执行命令
+
+	// 向命令队列发出交换缓冲的命令，此命令会加入到命令队列中，命令队列执行到该命令时，会通知交换链交换缓冲
+	m_DXGISwapChain->Present(1, NULL);
+	// 将围栏预定值设定为下一帧
+	FenceValue++;
+	// 在命令队列 (命令队列在 GPU 端) 设置围栏预定值，此命令会加入到命令队列中
+	// 命令队列执行到这里会修改围栏值，表示渲染已完成，"击中"围栏
+	m_CommandQueue->Signal(m_Fence.Get(), FenceValue);
+	// 设置围栏的预定事件，当渲染完成时，围栏被"击中"，激发预定事件，将事件由无信号状态转换成有信号状态
+	m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
+}
+
+inline void DX12Engine::RenderLoop()
+{
+	bool isExit = false;	// 是否退出
+	MSG msg = {};			// 消息结构体
+
+	while (isExit != true)
+	{
+		// MsgWaitForMultipleObjects 用于多个线程的无阻塞等待，返回值是激发事件 (线程) 的 ID
+		// 经过该函数后 RenderEvent 也会自动重置为无信号状态，因为我们创建事件的时候指定了第二个参数为 false
+		DWORD ActiveEvent = ::MsgWaitForMultipleObjects(1, &RenderEvent, false, INFINITE, QS_ALLINPUT);
+
+		switch (ActiveEvent - WAIT_OBJECT_0)
+		{
+		case 0:				// ActiveEvent 是 0，说明渲染事件已经完成了，进行下一次渲染
+			Render();
+			break;
+
+		case 1:				// ActiveEvent 是 1，说明渲染事件未完成，CPU 主线程同时处理窗口消息，防止界面假死
+			// 查看消息队列是否有消息，如果有就获取。 PM_REMOVE 表示获取完消息，就立刻将该消息从消息队列中移除
+			while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+			{
+				// 如果程序没有收到退出消息，就向操作系统发出派发消息的命令
+				if (msg.message != WM_QUIT)
+				{
+					TranslateMessage(&msg);					// 翻译消息，将虚拟按键值转换为对应的 ASCII 码 (后文会讲)
+					DispatchMessage(&msg);					// 派发消息，通知操作系统调用回调函数处理消息
+				}
+				else
+				{
+					isExit = true;							// 收到退出消息，就退出消息循环
+				}
+			}
+			break;
+
+		case WAIT_TIMEOUT:	// 渲染超时
+			break;
+		}
+	}
+}
+
+// 回调函数
+inline LRESULT CALLBACK DX12Engine::CallBackFunc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	// 用 switch 将第二个参数分流，每个 case 分别对应一个窗口消息
+	switch (msg)
+	{
+	case WM_DESTROY:			// 窗口被销毁 (当按下右上角 X 关闭窗口时)
+		PostQuitMessage(0);		// 向操作系统发出退出请求 (WM_QUIT)，结束消息循环
+		break;
+
+		// 如果接收到其他消息，直接默认返回整个窗口
+	default: return DefWindowProc(hwnd, msg, wParam, lParam);
+	}
+
+	return 0;	// 注意这里！
+}
+
+inline void DX12Engine::Run(HINSTANCE hins)
+{
+	DX12Engine engine;
+	engine.InitWindow(hins);
+	engine.CreateDebugDevice();
+	engine.CreateDevice();
+	engine.CreateCommandComponents();
+	engine.CreateRenderTarget();
+	engine.CreateFenceAndBarrier();
+
+	engine.LoadTextureFromFile();
+	engine.CreateSRVHeap();
+	engine.CreateUploadAndDefaultResource();
+	engine.CopyTextureDataToDefaultResource();
+	engine.CreateSRV();
+
+	engine.CreateRootSignature();
+	engine.CreatePSO();
+	engine.CreateVertexResource();
+
+	engine.RenderLoop();
+}
+
+// 主函数
+int WINAPI WinMain(HINSTANCE hins, HINSTANCE hPrev, LPSTR cmdLine, int cmdShow)
+{
+	DX12Engine::Run(hins);
+}

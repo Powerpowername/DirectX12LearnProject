@@ -21,8 +21,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{fd49a06a-b1a8-4e6c-87a1-434c4b5f2235}</ProjectGuid>
-    <RootNamespace>DrawTexture</RootNamespace>
+    <ProjectGuid>{65d1c29c-fcd2-4351-af84-f4a172265b7c}</ProjectGuid>
+    <RootNamespace>Block</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -107,7 +107,7 @@
       <AdditionalIncludeDirectories>E:\lib_c\DirectX-Headers-main\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
@@ -128,15 +128,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="diamond_ore.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="shader.hlsl">
-      <FileType>Document</FileType>
-    </None>
+    <ClCompile Include="winmain.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
