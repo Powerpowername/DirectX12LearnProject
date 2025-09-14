@@ -278,3 +278,38 @@ resBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(
 commandList->ResourceBarrier(1, &resBarrier);
 ThrowIfFailed(commandList->Close());
 ```
+
+
+
+# 堆资源分为资源堆与描述符堆
+```cpp
+\\资源堆创建方式
+ID3D12Device::CreateCommittedResource(
+  const D3D12_HEAP_PROPERTIES *pHeapProperties, //堆属性
+  D3D12_HEAP_FLAGS HeapFlags,                   //堆标志
+  const D3D12_RESOURCE_DESC *pDesc,             //资源描述
+  D3D12_RESOURCE_STATES InitialResourceState,    //初始资源状态
+  const D3D12_CLEAR_VALUE *pOptimizedClearValue,//优化清除值
+  REFIID riid,                                  //接口ID
+  void **ppvResource                            //输出资源指针
+);
+
+\\描述符堆创建方式
+ID3D12Device::CreateDescriptorHeap(
+  const D3D12_DESCRIPTOR_HEAP_DESC *pDescriptorHeapDesc, //描述符堆描述
+  REFIID riid,                                           //接口ID
+  void **ppvHeap                                        //输出描述符堆指针
+);
+
+
+\\资源操作资源
+ID3D12Resource::Map(
+  UINT Subresource,            //子资源索引
+  const D3D12_RANGE *pReadRange,//读取范围
+  void **ppData                //输出数据指针
+);
+
+\\描述符堆操作资源，借助描述符句柄
+D3D12_CPU_DESCRIPTOR_HANDLE D3D12_DESCRIPTOR_HEAP::GetCPUDescriptorHandleForHeapStart();
+
+```

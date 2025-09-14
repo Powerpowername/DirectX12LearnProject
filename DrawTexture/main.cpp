@@ -7,7 +7,7 @@
 #include<DirectXMath.h>		// DirectX 数学库
 #include<d3dcompiler.h>		// DirectX Shader 着色器编译库
 #include<wincodec.h>		// WIC 图像处理框架，用于解码编码转换图片文件
-#include"directx/d3dx12.h"
+#include"d3dx12.h"
 #include<wrl.h>				// COM 组件模板库，方便写 DX12 和 DXGI 相关的接口
 #include<string>			// C++ 标准 string 库
 #include<sstream>			// C++ 字符串流处理库
@@ -560,8 +560,8 @@ inline void DX12Engine::CreateUploadAndDefaultResource()
 	UploadResourceDesc.MipLevels = 1;									// Mipmap 等级，这个是用于纹理的，上传堆资源必须为 1
 	UploadResourceDesc.SampleDesc.Count = 1;							// 资源采样次数，上传堆资源都是填 1
 
-	CD3DX12_HEAP_PROPERTIES UploadHeapDesc{ D3D12_HEAP_TYPE_UPLOAD };
-	UploadHeapDesc.Type = D3D12_HEAP_TYPE_UPLOAD;					// 上传堆类型
+	CD3DX12_HEAP_PROPERTIES UploadHeapDesc(D3D12_HEAP_TYPE_UPLOAD) ;
+	//UploadHeapDesc.Type = D3D12_HEAP_TYPE_UPLOAD;					// 上传堆类型
 	// 创建上传堆资源
 	m_D3D12Device->CreateCommittedResource(
 		&UploadHeapDesc,					// 堆属性
@@ -721,16 +721,16 @@ inline void DX12Engine::CreateRootSignature()
 	StaticSamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;			// 这个是用于阴影贴图的，我们不需要用它，所以填 D3D12_COMPARISON_FUNC_NEVER
 
 
-	CD3DX12_ROOT_SIGNATURE_DESC rootSianatureDesc{};	// 根签名描述符结构体
-	rootSianatureDesc.NumParameters = 1;				// 根参数数量，我们这里只有一个根参数
-	rootSianatureDesc.pParameters = &RootParameter;	// 根参数指针
-	rootSianatureDesc.NumStaticSamplers = 1;			// 静态采样器数量，我们这里只有一个静态采样器
-	rootSianatureDesc.pStaticSamplers = &StaticSamplerDesc; // 静态采样器指针
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc{};	// 根签名描述符结构体
+	rootSignatureDesc.NumParameters = 1;				// 根参数数量，我们这里只有一个根参数
+	rootSignatureDesc.pParameters = &RootParameter;	// 根参数指针
+	rootSignatureDesc.NumStaticSamplers = 1;			// 静态采样器数量，我们这里只有一个静态采样器
+	rootSignatureDesc.pStaticSamplers = &StaticSamplerDesc; // 静态采样器指针
 	// 根签名标志，可以设置渲染管线不同阶段下的输入参数状态。注意这里！我们要从 IA 阶段输入顶点数据，所以要通过根签名，设置渲染管线允许从 IA 阶段读入数据
-	rootSianatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
 	// 编译根签名，让根签名先编译成 GPU 可读的二进制字节码
-	D3D12SerializeRootSignature(&rootSianatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SignatureBlob, &ErrorBlob);
+	D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &SignatureBlob, &ErrorBlob);
 	if (ErrorBlob)		// 如果根签名编译出错，ErrorBlob 可以提供报错信息
 	{
 		OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
@@ -752,10 +752,9 @@ inline void DX12Engine::CreatePSO()
 	// Input Assembler 输入装配阶段
 	D3D12_INPUT_LAYOUT_DESC InputLayoutDesc{};	// 输入布局描述符结构体
 	D3D12_INPUT_ELEMENT_DESC InputElementDesc[]{
-		{"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,0,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
-		{"TEXCOORD",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,16,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
 	};
-
 	InputLayoutDesc.NumElements = _countof(InputElementDesc); // 输入元素数量
 	InputLayoutDesc.pInputElementDescs = InputElementDesc; // 输入元素指针
 	PSODesc.InputLayout = InputLayoutDesc; // 将输入布局描述符赋值给 PSO 描述符
@@ -1014,4 +1013,5 @@ inline void DX12Engine::Run(HINSTANCE hins)
 int WINAPI WinMain(HINSTANCE hins, HINSTANCE hPrev, LPSTR cmdLine, int cmdShow)
 {
 	DX12Engine::Run(hins);
+	return 0;
 }
