@@ -554,4 +554,47 @@ public:
 		m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
 
 	}
+	void CreateSRV()
+	{
+		CD3DX12_SHADER_RESOURCE_VIEW_DESC SRVDescriptorDesc{};
+		SRVDescriptorDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D; // SRV 视图维度是 2D 纹理
+		SRVDescriptorDesc.Format = TextureFormat; // 纹理格式
+		SRVDescriptorDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; // 默认映射
+		SRVDescriptorDesc.Texture2D.MipLevels = 1; // Mip 级别为 1
+		SRV_CPUHandle = m_SRVHeap->GetCPUDescriptorHandleForHeapStart(); // 获取 SRV 描述符堆的起始句柄
+		m_D3D12Device->CreateShaderResourceView(m_DefaultTextureResource.Get(), &SRVDescriptorDesc, SRV_CPUHandle);
+		//设置跟参数时需要用到SRV的GPU句柄来绑定跟参数
+		SRV_GPUHandle = m_SRVHeap->GetGPUDescriptorHandleForHeapStart(); // 获取 SRV 描述符堆的起始 GPU 句柄
+
+	}
+
+	void CreateCBVBufferResource()
+	{
+		// 常量资源宽度，这里填整个结构体的大小。注意！硬件要求，常量缓冲需要 256 字节对齐！所以这里要进行 Ceil 向上取整，进行内存对齐！
+		UINT CBufferWidth = Ceil(sizeof(CBuffer), 256) * 256;//此处就传MVP矩阵
+		//CBV通常是放在上传堆中，因为它需要频繁更新，所以不会上传到默认堆中
+		CD3DX12_RESOURCE_DESC CBVResourceDesc{};
+		CBVResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER; // 上传堆资源都是缓冲
+		CBVResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR; 	// 上传堆资源都是按行存储数据的 (一维线性存储)
+		CBVResourceDesc.Width = CBufferWidth;				// 资源宽度
+		CBVResourceDesc.Height = 1;							// 资源高度为 1
+		CBVResourceDesc.Format = DXGI_FORMAT_UNKNOWN;		// 上传堆资源的格式必须为 DXGI_FORMAT_UNKNOWN
+		CBVResourceDesc.DepthOrArraySize = 1;				// 资源深度或数组大小为 1
+		CBVResourceDesc.MipLevels = 1;						// Mip 级别为 1
+		CBVResourceDesc.SampleDesc.Count = 1;				// 多重采样为 1
+
+		CD3DX12_HEAP_PROPERTIES CBVHeapDesc{ D3D12_HEAP_TYPE_UPLOAD }; // 上传堆属性
+		m_D3D12Device->CreateCommittedResource(&CBVHeapDesc, D3D12_HEAP_FLAG_NONE, &CBVResourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_CBVResource));	
+		// 将常量缓冲资源映射到 CPU 可访问的内存地址
+		m_CBVResource->Map(0, nullptr, reinterpret_cast<void**>(&MVPBuffer));
+	
+	}
+
+	void CreateRootSignature()
+	{
+		ComPtr<ID3DBlob> SignaatureBlob = nullptr; // 根签名的二进制代码
+
+	}
+	
+	
 };
