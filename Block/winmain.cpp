@@ -218,9 +218,9 @@ private:
 	XMMATRIX ProjectionMatrix;										// 投影矩阵，观察空间 -> 齐次裁剪空间
 
 	ComPtr<ID3D12RootSignature> m_RootSignature; // 根签名
-	ComPtr<ID3D12PipelineState> m_PipelineState; // 管线状态对象
+	ComPtr<ID3D12PipelineState> m_PipelineStateObject; // 管线状态对象
 
-	ComPtr<ID3D12Resource> m_VertexBuffer; // 顶点缓冲区资源
+	ComPtr<ID3D12Resource> m_VertexResource; // 顶点缓冲区资源
 	struct VERTEX											// 顶点数据结构体
 	{
 		XMFLOAT4 position;									// 顶点位置
@@ -593,8 +593,173 @@ public:
 	void CreateRootSignature()
 	{
 		ComPtr<ID3DBlob> SignaatureBlob = nullptr; // 根签名的二进制代码
+		ComPtr<ID3DBlob> ErrorBlob = nullptr; // 用于存储错误信息的 Blob
+		CD3DX12_ROOT_PARAMETER RootParameters[2]{};
 
+		CD3DX12_DESCRIPTOR_RANGE SRVDescriptorRangeDesc{}; // SRV 描述符表
+		SRVDescriptorRangeDesc.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 描述符类型是 SRV
+		SRVDescriptorRangeDesc.NumDescriptors = 1; // 一个纹理
+		SRVDescriptorRangeDesc.BaseShaderRegister = 0; // 从 t0 寄存器开始
+		SRVDescriptorRangeDesc.RegisterSpace = 0; // 寄存器空间 0
+		SRVDescriptorRangeDesc.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND; // 自动计算偏移量
+		RootParameters[0].InitAsDescriptorTable(1, &SRVDescriptorRangeDesc, D3D12_SHADER_VISIBILITY_PIXEL); // 像素着色器可见
+		//RootParameters[1].InitAsConstantBufferView(0); // b0 寄存器
+		//CD3DX12_ROOT_DESCRIPTOR CBVRootDescriptorDesc{};
+		//CBVRootDescriptorDesc.RegisterSpace = 0; // 寄存器空间 0
+		//CBVRootDescriptorDesc.ShaderRegister = 0; // b0 寄存器
+		RootParameters[1].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX); // 顶点着色器可见
+
+		CD3DX12_STATIC_SAMPLER_DESC StaticSamplerDesc{}; // 静态采样器
+		StaticSamplerDesc.ShaderRegister = 0; // s0 寄存器
+		StaticSamplerDesc.RegisterSpace = 0; // 寄存器空间 
+		StaticSamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL; // 像素着色器可见	
+		StaticSamplerDesc.Filter = D3D12_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
+		StaticSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		StaticSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		StaticSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		StaticSamplerDesc.MipLODBias = 0; // Mip 级别偏移为 0
+		StaticSamplerDesc.MaxAnisotropy = 0; // 各向异性过滤等级为 0
+		StaticSamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER; // 比较函数
+		StaticSamplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK; // 边界颜色为不透明黑色
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootsignatureDesc{};
+		rootsignatureDesc.Init(_countof(RootParameters), RootParameters, 1, &StaticSamplerDesc, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		D3D12SerializeRootSignature(&rootsignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &SignaatureBlob, &ErrorBlob);
+		if (ErrorBlob != nullptr)
+		{
+			OutputDebugStringA((char*)ErrorBlob->GetBufferPointer());
+		}
+		m_D3D12Device->CreateRootSignature(0, SignaatureBlob->GetBufferPointer(), SignaatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature));
+	}
+
+	void CreatePSO()
+	{
+		//输入布局是专门用来告诉 GPU 我们的顶点数据长什么样子的
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc{};
+		D3D12_INPUT_LAYOUT_DESC InputLayoutDesc{}; // 输入布局描述
+		D3D12_INPUT_ELEMENT_DESC InputElementDesc[2]{
+			"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,D3D12_APPEND_ALIGNED_ELEMENT,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0,
+			"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,0,D3D12_APPEND_ALIGNED_ELEMENT,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0
+		};
+
+		InputLayoutDesc.NumElements = _countof(InputElementDesc); // 输入元素数量
+		InputLayoutDesc.pInputElementDescs = InputElementDesc; // 输入元素描述数组
+		PSODesc.InputLayout = InputLayoutDesc; // 输入布局
+
+		ComPtr<ID3DBlob> VertexShaderBlob = nullptr; // 顶点着色器的二进制代码
+		ComPtr<ID3DBlob> PixelShaderBlob = nullptr; // 像素着色器的二进制代码
+		ComPtr<ID3DBlob> ErrorBlob = nullptr; // 用于存储错误信息的 Blob
+		D3DCompileFromFile(L"shader.hlsl", nullptr, nullptr, "VSMain", "vs_5_1", NULL, NULL, &VertexShaderBlob, &ErrorBlob);
+		if (ErrorBlob != nullptr)
+		{
+			OutputDebugStringA((char*)ErrorBlob->GetBufferPointer());
+			OutputDebugStringA("\n");
+		}
+		PSODesc.VS.pShaderBytecode = VertexShaderBlob->GetBufferPointer(); // 顶点着色器代码
+		PSODesc.VS.BytecodeLength = VertexShaderBlob->GetBufferSize(); // 顶点着色器代码大小
+		PSODesc.PS.pShaderBytecode = PixelShaderBlob->GetBufferPointer(); // 像素着色器代码
+		PSODesc.PS.BytecodeLength = PixelShaderBlob->GetBufferSize(); // 像素着色器代码大小
+
+		PSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK; 
+		PSODesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+
+		PSODesc.pRootSignature = m_RootSignature.Get(); // 根签名
+		PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // 图元拓扑类型是三角形
+		PSODesc.NumRenderTargets = 1; // 一个渲染目标
+		PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // 渲染目标格式
+		PSODesc.SampleDesc.Count = 1; // 多重采样为 1
+		PSODesc.SampleMask = UINT_MAX; // 采样掩码
+		m_D3D12Device->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(&m_PipelineStateObject));
 	}
 	
-	
+	void CreateVertexResource()
+	{
+#pragma region 定义顶点结构体
+		// CPU 高速缓存上的顶点信息数组，注意 DirectX 使用的是左手坐标系，写顶点信息时，请比一比你的左手！
+		VERTEX vertexs[24] =
+		{
+			// 正面
+			{{0,2,0,1},{0,0}},
+			{{2,2,0,1},{1,0}},
+			{{2,0,0,1},{1,1}},
+			{{0,0,0,1},{0,1}},
+
+			// 背面
+			{{2,2,2,1},{0,0}},
+			{{0,2,2,1},{1,0}},
+			{{0,0,2,1},{1,1}},
+			{{2,0,2,1},{0,1}},
+
+			// 左面
+			{{0,2,2,1},{0,0}},
+			{{0,2,0,1},{1,0}},
+			{{0,0,0,1},{1,1}},
+			{{0,0,2,1},{0,1}},
+
+			// 右面
+			{{2,2,0,1},{0,0}},
+			{{2,2,2,1},{1,0}},
+			{{2,0,2,1},{1,1}},
+			{{2,0,0,1},{0,1}},
+
+			// 上面
+			{{0,2,2,1},{0,0}},
+			{{2,2,2,1},{1,0}},
+			{{2,2,0,1},{1,1}},
+			{{0,2,0,1},{0,1}},
+
+			// 下面
+			{{0,0,0,1},{0,0}},
+			{{2,0,0,1},{1,0}},
+			{{2,0,2,1},{1,1}},
+			{{0,0,2,1},{0,1}}
+		};
+#pragma endregion
+
+		D3D12_RESOURCE_DESC VertexDesc{};
+		VertexDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER; // 资源维度是 Buffer
+		VertexDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR; // 行主序
+		VertexDesc.Width = sizeof(vertexs); // 资源大小
+		VertexDesc.Height = 1; // 高度为 1
+		VertexDesc.Format = DXGI_FORMAT_UNKNOWN; // 格式未知
+		VertexDesc.DepthOrArraySize = 1; // 深度或数组大小为 1
+		VertexDesc.MipLevels = 1; // Mip 级别为 1
+		VertexDesc.SampleDesc.Count = 1; // 多重采样设置为 1，表示不使用多重采样
+		
+		CD3DX12_HEAP_PROPERTIES UploadHeapDesc{ D3D12_HEAP_TYPE_UPLOAD }; // 上传堆属性
+
+		// 创建资源，CreateCommittedResource 会为资源自动创建一个等大小的隐式堆，这个隐式堆的所有权由操作系统管理，开发者不可控制
+		m_D3D12Device->CreateCommittedResource(&UploadHeapDesc, D3D12_HEAP_FLAG_NONE, &VertexDesc, D3D12_RESOURCE_STATE_GENERIC_READ
+			, nullptr, IID_PPV_ARGS(&m_VertexResource));
+		BYTE* TransferPointer = nullptr;
+		m_VertexResource->Map(0, nullptr, reinterpret_cast<void**>(&TransferPointer));
+
+		memcpy(TransferPointer, vertexs, sizeof(vertexs)); // 复制顶点数据到资源中
+		m_VertexResource->Unmap(0, nullptr); // 解除映射
+		// 初始化顶点缓冲视图
+		VertexBufferView.BufferLocation = m_VertexResource->GetGPUVirtualAddress(); // 顶点缓冲的 GPU 虚拟地址
+		VertexBufferView.StrideInBytes = sizeof(VERTEX); // 每个顶点的大小
+		VertexBufferView.SizeInBytes = sizeof(vertexs); // 顶点缓冲的整个大小
+	}
+	void CreateIndexResource()
+	{
+		// 顶点索引数组，注意这里的 UINT == UINT32，后面填的格式 (步长) 必须是 DXGI_FORMAT_R32_UINT，否则会出错
+		UINT IndexArray[36] =
+		{
+			// 正面
+			0,1,2,0,2,3,
+			// 背面
+			4,5,6,4,6,7,
+			// 左面
+			8,9,10,8,10,11,
+			// 右面
+			12,13,14,12,14,15,
+			// 上面
+			16,17,18,16,18,19,
+			// 下面
+			20,21,22,20,22,23
+		};
+
+
+	}
 };
