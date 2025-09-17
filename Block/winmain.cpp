@@ -228,7 +228,7 @@ private:
 	};
 
 	D3D12_VERTEX_BUFFER_VIEW VertexBufferView; // 顶点缓冲区视图
-	ComPtr<ID3D12Resource> m_IndexBuffer; // 索引缓冲区资源
+	ComPtr<ID3D12Resource> m_IndexResource; // 索引缓冲区资源
 	D3D12_INDEX_BUFFER_VIEW IndexBufferView{}; // 索引缓冲区视图
 
 	// 视口
@@ -607,6 +607,9 @@ public:
 		//CD3DX12_ROOT_DESCRIPTOR CBVRootDescriptorDesc{};
 		//CBVRootDescriptorDesc.RegisterSpace = 0; // 寄存器空间 0
 		//CBVRootDescriptorDesc.ShaderRegister = 0; // b0 寄存器
+		//此处直接使用的是根描述符，将资源信息直接内联到了根参数里了，这样就不需要创建常量描述符&描述符堆了
+		//还要说明的是，此处只是说明要常量缓冲区的数据内联到根参数里，但是还没有这么做，所以后续任然要使用
+		//ID3D12GraphicsCommandList::SetDescriptorHeaps将元数据传入到根参数形成根描述符
 		RootParameters[1].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX); // 顶点着色器可见
 
 		CD3DX12_STATIC_SAMPLER_DESC StaticSamplerDesc{}; // 静态采样器
@@ -759,7 +762,87 @@ public:
 			// 下面
 			20,21,22,20,22,23
 		};
+		CD3DX12_RESOURCE_DESC IndexResDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(IndexArray), D3D12_RESOURCE_FLAG_NONE,0);
+		CD3DX12_HEAP_PROPERTIES UploadHeapDesc{ D3D12_HEAP_TYPE_UPLOAD };
 
+		m_D3D12Device->CreateCommittedResource(&UploadHeapDesc, D3D12_HEAP_FLAG_NONE, &IndexResDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_IndexResource));
 
+		BYTE* TransferPointer = nullptr;
+		m_IndexResource->Map(0, nullptr, reinterpret_cast<void**>(&TransferPointer));
+		memcpy(TransferPointer, IndexArray, sizeof(IndexArray));
+		m_IndexResource->Unmap(0, nullptr);
+
+		IndexBufferView.BufferLocation = m_IndexResource->GetGPUVirtualAddress();
+		IndexBufferView.SizeInBytes = sizeof(IndexArray);
+		IndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	}
+
+	void UpdateConstantBuffer()
+	{
+		ModelMatrix = XMMatrixRotationY(30);
+		ViewMatrix = XMMatrixLookAtLH(EyePosition, FocusPosition, UpDirection);
+		ProjectionMatrix = XMMatrixPerspectiveFovLH(XM_PIDIV4, 4.0 / 3, 0.1, 1000);
+		XMStoreFloat4x4(&MVPBuffer->MVPMatrix, ModelMatrix * ViewMatrix * ProjectionMatrix);
+	}
+
+	void Render()
+	{
+		UpdateConstantBuffer();
+
+		RTVHandle = m_RTVHeap->GetCPUDescriptorHandleForHeapStart();
+		FrameIndex = m_DXGISwapChain->GetCurrentBackBufferIndex();
+		RTVHandle.ptr += FrameIndex * RTVDescriptorSize;
+
+		m_CommandAllocator->Reset();
+		m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			m_RenderTarget[FrameIndex].Get(),
+			D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET			
+		);
+		m_CommandList->ResourceBarrier(1, &barrier);
+		
+		m_CommandList->SetGraphicsRootSignature(m_RootSignature.Get());
+		m_CommandList->SetPipelineState(m_PipelineStateObject.Get());
+		// 设置视口 (光栅化阶段)，用于光栅化里的屏幕映射
+		m_CommandList->RSSetViewports(1, &viewPort);
+		// 设置裁剪矩形 (光栅化阶段)
+		m_CommandList->RSSetScissorRects(1, &ScissorRect);
+
+		m_CommandList->OMSetRenderTargets(1, &RTVHandle, false, nullptr);
+		// 清空当前渲染目标的背景为天蓝色
+		m_CommandList->ClearRenderTargetView(RTVHandle, DirectX::Colors::SkyBlue, 0, nullptr);
+
+		ID3D12DescriptorHeap* _temp_DescriptorHeaps[]{ m_SRVHeap.Get() };
+		m_CommandList->SetDescriptorHeaps(1, _temp_DescriptorHeaps);
+		m_CommandList->SetGraphicsRootDescriptorTable(0, SRV_GPUHandle);
+		
+		m_CommandList->SetGraphicsRootConstantBufferView(1, m_CBVResource->GetGPUVirtualAddress());
+
+		m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		// 设置 VBV 顶点缓冲描述符 (输入装配阶段) 
+		m_CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
+
+		// 设置 IBV 索引缓冲描述符 (输入装配阶段) 
+		m_CommandList->IASetIndexBuffer(&IndexBufferView);
+
+		// Draw Call! 绘制方块
+		m_CommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			m_RenderTarget[FrameIndex].Get(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PRESENT
+		);
+
+		m_CommandList->Close();
+		ID3D12CommandList* _temp_cmdlists[]{ m_CommandList.Get() };
+		m_CommandQueue->ExecuteCommandLists(1, _temp_cmdlists);
+		m_DXGISwapChain->Present(1, 0);//阻塞等待1次垂直同步
+
+		FenceValue++;
+		m_CommandQueue->Signal(m_Fence.Get(), FenceValue);
+		m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
 	}
 };
