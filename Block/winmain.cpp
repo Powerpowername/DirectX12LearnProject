@@ -5,7 +5,7 @@
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
 #include <wincodec.h>
-#include "directx/d3dx12.h"
+#include "d3dx12.h"
 #include <wrl.h>
 #include <string>
 #include <sstream>
@@ -177,7 +177,7 @@ private:
 	HANDLE RenderEvent = nullptr; // GPU 渲染事件
 	CD3DX12_RESOURCE_BARRIER barrier{};//  渲染开始的资源屏障，呈现 -> 渲染目标
 
-	std::wstring TextureFilename = L"../diamond_ore.jpg"; // 纹理文件路径
+	std::wstring TextureFilename = L"E:\\DirectX12Project\\DirectX12Pro\\Block/diamond_ore.png"; // 纹理文件路径
 	ComPtr<IWICImagingFactory> m_WICFactory;				// WIC 工厂
 	ComPtr<IWICBitmapDecoder> m_WICBitmapDecoder;			// 位图解码器
 	ComPtr<IWICBitmapFrameDecode> m_WICBitmapDecodeFrame;	// 由解码器得到的单个位图帧
@@ -530,14 +530,16 @@ public:
 
 		m_CommandAllocator->Reset();
 		m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
-		m_CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_DefaultTextureResource.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_DefaultTextureResource.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+		m_CommandList->ResourceBarrier(1, &barrier);
 		UpdateSubresources<1>(
 			m_CommandList.Get(),
 			m_DefaultTextureResource.Get(),
 			m_UploadTextureResource.Get(),
 			0, 0, 1, &textureData
 		);//内部是先将数据复制到上传堆，然后再从上传堆复制到默认堆，自动调用CopyTextureRegion拷贝上上传堆到默认堆
-		m_CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_DefaultTextureResource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ));
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_DefaultTextureResource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+		m_CommandList->ResourceBarrier(1, &barrier);
 		m_CommandList->Close();
 		// 用于传递命令用的临时 ID3D12CommandList 数组
 		ID3D12CommandList* _temp_cmdlists[] = { m_CommandList.Get() };
@@ -652,10 +654,17 @@ public:
 		ComPtr<ID3DBlob> VertexShaderBlob = nullptr; // 顶点着色器的二进制代码
 		ComPtr<ID3DBlob> PixelShaderBlob = nullptr; // 像素着色器的二进制代码
 		ComPtr<ID3DBlob> ErrorBlob = nullptr; // 用于存储错误信息的 Blob
-		D3DCompileFromFile(L"shader.hlsl", nullptr, nullptr, "VSMain", "vs_5_1", NULL, NULL, &VertexShaderBlob, &ErrorBlob);
+		D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\Block/shader.hlsl", nullptr, nullptr, "VSMain", "vs_5_1", NULL, NULL, &VertexShaderBlob, &ErrorBlob);
 		if (ErrorBlob != nullptr)
 		{
 			OutputDebugStringA((char*)ErrorBlob->GetBufferPointer());
+			OutputDebugStringA("\n");
+		}
+		// 编译像素着色器 Pixel Shader
+		D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\Block/shader.hlsl", nullptr, nullptr, "PSMain", "ps_5_1", NULL, NULL, &PixelShaderBlob, &ErrorBlob);
+		if (ErrorBlob)		// 如果着色器编译出错，ErrorBlob 可以提供报错信息
+		{
+			OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
 			OutputDebugStringA("\n");
 		}
 		PSODesc.VS.pShaderBytecode = VertexShaderBlob->GetBufferPointer(); // 顶点着色器代码
@@ -779,7 +788,7 @@ public:
 
 	void UpdateConstantBuffer()
 	{
-		ModelMatrix = XMMatrixRotationY(30);
+		ModelMatrix = XMMatrixRotationY(30.0f);
 		ViewMatrix = XMMatrixLookAtLH(EyePosition, FocusPosition, UpDirection);
 		ProjectionMatrix = XMMatrixPerspectiveFovLH(XM_PIDIV4, 4.0 / 3, 0.1, 1000);
 		XMStoreFloat4x4(&MVPBuffer->MVPMatrix, ModelMatrix * ViewMatrix * ProjectionMatrix);
@@ -835,7 +844,7 @@ public:
 			D3D12_RESOURCE_STATE_RENDER_TARGET,
 			D3D12_RESOURCE_STATE_PRESENT
 		);
-
+		m_CommandList->ResourceBarrier(1, &barrier);
 		m_CommandList->Close();
 		ID3D12CommandList* _temp_cmdlists[]{ m_CommandList.Get() };
 		m_CommandQueue->ExecuteCommandLists(1, _temp_cmdlists);
@@ -845,4 +854,96 @@ public:
 		m_CommandQueue->Signal(m_Fence.Get(), FenceValue);
 		m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
 	}
+
+	// 渲染循环
+	void RenderLoop()
+	{
+		bool isExit = false;	// 是否退出
+		MSG msg = {};			// 消息结构体
+
+		while (isExit != true)
+		{
+			// MsgWaitForMultipleObjects 用于多个线程的无阻塞等待，返回值是激发事件 (线程) 的 ID
+			// 经过该函数后 RenderEvent 也会自动重置为无信号状态，因为我们创建事件的时候指定了第二个参数为 false
+			DWORD ActiveEvent = ::MsgWaitForMultipleObjects(1, &RenderEvent, false, INFINITE, QS_ALLINPUT);
+
+			switch (ActiveEvent - WAIT_OBJECT_0)
+			{
+			case 0:				// ActiveEvent 是 0，说明渲染事件已经完成了，进行下一次渲染
+				Render();
+				break;
+
+			case 1:				// ActiveEvent 是 1，说明渲染事件未完成，CPU 主线程同时处理窗口消息，防止界面假死
+				// 查看消息队列是否有消息，如果有就获取。 PM_REMOVE 表示获取完消息，就立刻将该消息从消息队列中移除
+				while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+				{
+					// 如果程序没有收到退出消息，就向操作系统发出派发消息的命令
+					if (msg.message != WM_QUIT)
+					{
+						TranslateMessage(&msg);					// 翻译消息，将虚拟按键值转换为对应的 ASCII 码 (后文会讲)
+						DispatchMessage(&msg);					// 派发消息，通知操作系统调用回调函数处理消息
+					}
+					else
+					{
+						isExit = true;							// 收到退出消息，就退出消息循环
+					}
+				}
+				break;
+
+			case WAIT_TIMEOUT:	// 渲染超时
+				break;
+			}
+		}
+	}
+
+	// 回调函数
+	static LRESULT CALLBACK CallBackFunc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+	{
+		// 用 switch 将第二个参数分流，每个 case 分别对应一个窗口消息
+		switch (msg)
+		{
+		case WM_DESTROY:			// 窗口被销毁 (当按下右上角 X 关闭窗口时)
+			PostQuitMessage(0);		// 向操作系统发出退出请求 (WM_QUIT)，结束消息循环
+			break;
+
+			// 如果接收到其他消息，直接默认返回整个窗口
+		default: return DefWindowProc(hwnd, msg, wParam, lParam);
+		}
+
+		return 0;	// 注意这里！
+	}
+	// 运行窗口
+	static void Run(HINSTANCE hins)
+	{
+		DX12Engine engine;
+		engine.InitWindow(hins);
+		engine.CreateDebugDevice();
+		engine.CreateDevice();
+		engine.CreateCommandComponents();
+		engine.CreateRenderTarget();
+		engine.CreateFenceAndBarrier();
+
+		engine.LoadTextureFromFile();
+		engine.CreateSRVHeap();
+		engine.CreateUploadAndDefaultResource();
+		engine.CopyTextureDataToDefaultResource();
+		engine.CreateSRV();
+
+		engine.CreateCBVBufferResource();
+
+		engine.CreateRootSignature();
+		engine.CreatePSO();
+
+		engine.CreateVertexResource();
+		engine.CreateIndexResource();
+
+		engine.RenderLoop();
+	}
 };
+
+
+// 主函数
+int WINAPI WinMain(HINSTANCE hins, HINSTANCE hPrev, LPSTR cmdLine, int cmdShow)
+{
+	DX12Engine::Run(hins);
+}
