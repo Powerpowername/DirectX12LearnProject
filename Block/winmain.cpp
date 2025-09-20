@@ -151,6 +151,10 @@ namespace DX12TextureHelper
 class DX12Engine
 {
 private:
+	////test
+	//D3D12_RESOURCE_BARRIER beg_barrier = {};				// 渲染开始的资源屏障，呈现 -> 渲染目标
+	//D3D12_RESOURCE_BARRIER end_barrier = {};				// 渲染结束的资源屏障，渲染目标 -> 呈现
+
 	int WindowWidth = 800;		// 窗口宽度
 	int WindowHeight = 600;	// 窗口高度
 	HWND m_hwnd = nullptr;	// 窗口句柄
@@ -209,7 +213,7 @@ private:
 	};
 
 	CBuffer* MVPBuffer = nullptr;	// 常量缓冲结构体指针，里面存储的是 MVP 矩阵信息，下文 Map 后指针会指向 CBVResource 的地址
-
+	
 	XMVECTOR EyePosition = XMVectorSet(4, 3, 4, 1);					// 摄像机在世界空间下的位置
 	XMVECTOR FocusPosition = XMVectorSet(0, 1, 1, 1);				// 摄像机在世界空间下观察的焦点位置
 	XMVECTOR UpDirection = XMVectorSet(0, 1, 0, 0);					// 世界空间垂直向上的向量
@@ -241,6 +245,7 @@ public:
 	
 	void InitWindow(HINSTANCE hins)
 	{
+		
 		WNDCLASS wc = {};					// 用于记录窗口类信息的结构体
 		wc.hInstance = hins;				// 窗口类需要一个应用程序的实例句柄 hinstance
 		wc.lpfnWndProc = CallBackFunc;		// 窗口类需要一个回调函数，用于处理窗口产生的消息
@@ -357,6 +362,16 @@ public:
 		RenderEvent = CreateEvent(nullptr, FALSE, TRUE, nullptr);
 		m_D3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence));
 		//资源屏障后续用到再处理
+				// 设置资源屏障
+		//// beg_barrier 起始屏障：Present 呈现状态 -> Render Target 渲染目标状态
+		//beg_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;					// 指定类型为转换屏障		
+		//beg_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+		//beg_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+		//// end_barrier 终止屏障：Render Target 渲染目标状态 -> Present 呈现状态
+		//end_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		//end_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		//end_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 	}
 
 	bool LoadTextureFromFile()
@@ -486,7 +501,6 @@ public:
 		m_D3D12Device->CreateCommittedResource(&DefaultHeapDesc, D3D12_HEAP_FLAG_NONE, &DefaultResourceDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_DefaultTextureResource));
 
 	}
-
 	void CopyTextureDataToDefaultResource()
 	{
 		// 用于暂时存储纹理数据的指针，这里要用 malloc 分配空间
@@ -499,34 +513,10 @@ public:
 		// 用于传递资源的指针
 		BYTE* TransferPointer = nullptr;
 
-		//m_UploadTextureResource->Map(0, nullptr, reinterpret_cast<void**>(&TransferPointer));
-
-		//for (int i = 0;i < TextureHeight;i++)
-		//{
-		//	memcpy(TransferPointer, TextureDataPtr, BytePerRowSize); // 复制一行数据
-
-		//	TextureDataPtr += BytePerRowSize; // 源数据指针下移一行
-		//	TransferPointer += UploadResourceRowSize; // 目标数据指针下移一行
-		//}
-
-		//m_UploadTextureResource->Unmap(0, nullptr); // 解除映射
-
-		//TextureData -= TextureSize; // 将 TextureData 指针复位
-		//free(TextureData); // 释放内存
-
-		//D3D12_PLACED_SUBRESOURCE_FOOTPRINT PlacedFootprint{};
-		//D3D12_RESOURCE_DESC DefaultResourceDesc = m_DefaultTextureResource->GetDesc();
-
-		//m_D3D12Device->GetCopyableFootprints(&DefaultResourceDesc, 0, 1, 0, &PlacedFootprint, nullptr, nullptr, nullptr);
-		//D3D12_TEXTURE_COPY_LOCATION DstLocation = {};						// 复制目标位置 (默认堆资源) 结构体
-		//DstLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;		// 纹理复制类型，这里必须指向纹理
-		//DstLocation.SubresourceIndex = 0;									// 指定要复制的子资源索引
-		//DstLocation.pResource = m_DefaultTextureResource.Get();				// 要复制到的资源
-		
 		D3D12_SUBRESOURCE_DATA textureData{};
 		textureData.pData = TextureData.get();					// 指向纹理数据的指针
-		textureData.RowPitch = UploadResourceRowSize;			//为对齐后每行的大小
-		textureData.SlicePitch = UploadResourceSize;					//童谣为对齐后的整个纹理数据大小，单位：字节
+		textureData.RowPitch = BytePerRowSize;			//为对齐后每行的大小
+		textureData.SlicePitch = TextureSize;					//童谣为对齐后的整个纹理数据大小，单位：字节
 
 		m_CommandAllocator->Reset();
 		m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
@@ -556,6 +546,7 @@ public:
 		m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
 
 	}
+
 	void CreateSRV()
 	{
 		CD3DX12_SHADER_RESOURCE_VIEW_DESC SRVDescriptorDesc{};
@@ -570,8 +561,10 @@ public:
 
 	}
 
+	// 创建 Constant Buffer Resource 常量缓冲资源，常量缓冲是一块预先分配的高速显存，用于存储每一帧都要变换的资源，这里我们要存储 MVP 矩阵
 	void CreateCBVBufferResource()
 	{
+
 		// 常量资源宽度，这里填整个结构体的大小。注意！硬件要求，常量缓冲需要 256 字节对齐！所以这里要进行 Ceil 向上取整，进行内存对齐！
 		UINT CBufferWidth = Ceil(sizeof(CBuffer), 256) * 256;//此处就传MVP矩阵
 		//CBV通常是放在上传堆中，因为它需要频繁更新，所以不会上传到默认堆中
@@ -589,9 +582,10 @@ public:
 		m_D3D12Device->CreateCommittedResource(&CBVHeapDesc, D3D12_HEAP_FLAG_NONE, &CBVResourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_CBVResource));	
 		// 将常量缓冲资源映射到 CPU 可访问的内存地址
 		m_CBVResource->Map(0, nullptr, reinterpret_cast<void**>(&MVPBuffer));
-	
 	}
 
+
+	// 创建根签名
 	void CreateRootSignature()
 	{
 		ComPtr<ID3DBlob> SignaatureBlob = nullptr; // 根签名的二进制代码
@@ -637,6 +631,7 @@ public:
 		m_D3D12Device->CreateRootSignature(0, SignaatureBlob->GetBufferPointer(), SignaatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature));
 	}
 
+	// 创建渲染管线状态对象 (Pipeline State Object, PSO)
 	void CreatePSO()
 	{
 		//输入布局是专门用来告诉 GPU 我们的顶点数据长什么样子的
@@ -650,6 +645,8 @@ public:
 		InputLayoutDesc.NumElements = _countof(InputElementDesc); // 输入元素数量
 		InputLayoutDesc.pInputElementDescs = InputElementDesc; // 输入元素描述数组
 		PSODesc.InputLayout = InputLayoutDesc; // 输入布局
+
+
 
 		ComPtr<ID3DBlob> VertexShaderBlob = nullptr; // 顶点着色器的二进制代码
 		ComPtr<ID3DBlob> PixelShaderBlob = nullptr; // 像素着色器的二进制代码
@@ -667,23 +664,32 @@ public:
 			OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
 			OutputDebugStringA("\n");
 		}
+
 		PSODesc.VS.pShaderBytecode = VertexShaderBlob->GetBufferPointer(); // 顶点着色器代码
 		PSODesc.VS.BytecodeLength = VertexShaderBlob->GetBufferSize(); // 顶点着色器代码大小
 		PSODesc.PS.pShaderBytecode = PixelShaderBlob->GetBufferPointer(); // 像素着色器代码
 		PSODesc.PS.BytecodeLength = PixelShaderBlob->GetBufferSize(); // 像素着色器代码大小
 
-		PSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK; 
+		// Rasterizer 光栅化
+		PSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
 		PSODesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+
+		// 第一次设置根签名！本次设置是将根签名与 PSO 绑定，设置渲染管线的输入参数状态
+		PSODesc.pRootSignature = m_RootSignature.Get();
 
 		PSODesc.pRootSignature = m_RootSignature.Get(); // 根签名
 		PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // 图元拓扑类型是三角形
 		PSODesc.NumRenderTargets = 1; // 一个渲染目标
 		PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // 渲染目标格式
+		PSODesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 		PSODesc.SampleDesc.Count = 1; // 多重采样为 1
 		PSODesc.SampleMask = UINT_MAX; // 采样掩码
 		m_D3D12Device->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(&m_PipelineStateObject));
-	}
+
 	
+	}
+
+
 	void CreateVertexResource()
 	{
 #pragma region 定义顶点结构体
@@ -737,7 +743,7 @@ public:
 		VertexDesc.DepthOrArraySize = 1; // 深度或数组大小为 1
 		VertexDesc.MipLevels = 1; // Mip 级别为 1
 		VertexDesc.SampleDesc.Count = 1; // 多重采样设置为 1，表示不使用多重采样
-		
+
 		CD3DX12_HEAP_PROPERTIES UploadHeapDesc{ D3D12_HEAP_TYPE_UPLOAD }; // 上传堆属性
 
 		// 创建资源，CreateCommittedResource 会为资源自动创建一个等大小的隐式堆，这个隐式堆的所有权由操作系统管理，开发者不可控制
@@ -771,7 +777,7 @@ public:
 			// 下面
 			20,21,22,20,22,23
 		};
-		CD3DX12_RESOURCE_DESC IndexResDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(IndexArray), D3D12_RESOURCE_FLAG_NONE,0);
+		CD3DX12_RESOURCE_DESC IndexResDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(IndexArray), D3D12_RESOURCE_FLAG_NONE, 0);
 		CD3DX12_HEAP_PROPERTIES UploadHeapDesc{ D3D12_HEAP_TYPE_UPLOAD };
 
 		m_D3D12Device->CreateCommittedResource(&UploadHeapDesc, D3D12_HEAP_FLAG_NONE, &IndexResDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_IndexResource));
@@ -807,10 +813,10 @@ public:
 		barrier = CD3DX12_RESOURCE_BARRIER::Transition(
 			m_RenderTarget[FrameIndex].Get(),
 			D3D12_RESOURCE_STATE_PRESENT,
-			D3D12_RESOURCE_STATE_RENDER_TARGET			
+			D3D12_RESOURCE_STATE_RENDER_TARGET
 		);
 		m_CommandList->ResourceBarrier(1, &barrier);
-		
+
 		m_CommandList->SetGraphicsRootSignature(m_RootSignature.Get());
 		m_CommandList->SetPipelineState(m_PipelineStateObject.Get());
 		// 设置视口 (光栅化阶段)，用于光栅化里的屏幕映射
@@ -825,7 +831,7 @@ public:
 		ID3D12DescriptorHeap* _temp_DescriptorHeaps[]{ m_SRVHeap.Get() };
 		m_CommandList->SetDescriptorHeaps(1, _temp_DescriptorHeaps);
 		m_CommandList->SetGraphicsRootDescriptorTable(0, SRV_GPUHandle);
-		
+
 		m_CommandList->SetGraphicsRootConstantBufferView(1, m_CBVResource->GetGPUVirtualAddress());
 
 		m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

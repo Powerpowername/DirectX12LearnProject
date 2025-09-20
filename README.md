@@ -313,3 +313,21 @@ ID3D12Resource::Map(
 D3D12_CPU_DESCRIPTOR_HANDLE D3D12_DESCRIPTOR_HEAP::GetCPUDescriptorHandleForHeapStart();
 
 ```
+
+
+
+左乘会导致被乘矩阵发生 “行变化”,右乘会导致 “列变化”
+
+```cpp
+/*
+DirectXMath矩阵视为每行为列向量，
+ModelMatrix * ViewMatrix * ProjectionMatrix 这种是列优先
+
+
+
+glm
+
+GLSL：采用矩阵左乘向量（矩阵 × 向量），向量被视为 “列向量”。例如，顶点变换公式为：gl_Position = MVP * vec4(position, 1.0);此时 MVP 矩阵的乘法顺序必须是 proj * view * model（后执行的变换放左边）。
+HLSL：采用向量左乘矩阵（向量 × 矩阵），向量被视为 “行向量”。例如，顶点变换公式为：SV_Position = float4(position, 1.0) * MVP;此时 MVP 矩阵的乘法顺序必须是 model * view * proj（先执行的变换放左边）。*/
+
+```
