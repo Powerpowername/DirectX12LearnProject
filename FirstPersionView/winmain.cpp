@@ -9,7 +9,7 @@
 #include <string>
 #include <sstream>
 #include <functional>
-#include <directx/d3dx12.h>
+#include <d3dx12.h>
 #include <memory>
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -305,7 +305,7 @@ private:
 	HANDLE RenderEvent;
 	CD3DX12_RESOURCE_BARRIER barrier;
 
-	std::wstring TextureFilename = L"diamond_ore.png";		// 纹理文件名 (这里用的是相对路径)
+	std::wstring TextureFilename = L"E:\\DirectX12Project\\DirectX12Pro\\FirstPersionView\\diamond_ore.png";		// 纹理文件名 (这里用的是相对路径)
 	ComPtr<IWICImagingFactory> m_WICFactory;				// WIC 工厂
 	ComPtr<IWICBitmapDecoder> m_WICBitmapDecoder;			// 位图解码器
 	ComPtr<IWICBitmapFrameDecode> m_WICBitmapDecodeFrame;	// 由解码器得到的单个位图帧
@@ -609,16 +609,17 @@ public:
 		UploadResourceDesc.MipLevels = 1;//只创建一个 Mip 层级
 		UploadResourceDesc.SampleDesc.Count = 1;
 
-		CD3DX12_HEAP_PROPERTIES HeapProperties{ D3D12_HEAP_TYPE_UPLOAD };
+		CD3DX12_HEAP_PROPERTIES HeapProperties0{ D3D12_HEAP_TYPE_UPLOAD };
 
 		m_D3D12Device->CreateCommittedResource(
-			&HeapProperties,
+			&HeapProperties0,
 			D3D12_HEAP_FLAG_NONE,
 			&UploadResourceDesc,
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
 			IID_PPV_ARGS(&m_UploadTextureResource)
 		);
+
 
 		// 创建默认资源
 		CD3DX12_RESOURCE_DESC DefaultResourceDesc{};
@@ -646,34 +647,50 @@ public:
 
 	void CopyTextureDataToDefaultResource()
 	{
+		// 用于暂时存储纹理数据的指针，这里要用 malloc 分配空间
+		//TextureData = (BYTE*)malloc(TextureSize);
+		//unique_ptr<BYTE> TextureData = nullptr; // 纹理数据
 		TextureData = std::make_unique<BYTE[]>(TextureSize);
-		//DirectX12窗口坐标系为左上角为原点，与OpenGL坐标系不同，OpenGL坐标系为左下角为原点
+		// 将整块纹理数据读到 TextureData 中，方便后文的 memcpy 复制操作
 		m_WICBitmapSource->CopyPixels(nullptr, BytesPerRowSize, TextureSize, TextureData.get());
-		BYTE* TextureDataPtr = TextureData.get();
+		BYTE* TextureDataPtr = TextureData.get(); // 保存初始指针，后面释放内存时要用
+		// 用于传递资源的指针
+		BYTE* TransferPointer = nullptr;
 
 		D3D12_SUBRESOURCE_DATA textureData{};
-		textureData.pData = TextureData.get();
-		textureData.RowPitch = UploadResourceRowSize;
-		textureData.SlicePitch = UploadResourceSize;
+		textureData.pData = TextureData.get();					// 指向纹理数据的指针
+		textureData.RowPitch = BytesPerRowSize;			//为对齐后每行的大小
+		textureData.SlicePitch = TextureSize;					//童谣为对齐后的整个纹理数据大小，单位：字节
+
+		m_CommandAllocator->Reset();
+		m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
 		barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_DefaultTextureResource.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
 		m_CommandList->ResourceBarrier(1, &barrier);
 		UpdateSubresources<1>(
 			m_CommandList.Get(),
 			m_DefaultTextureResource.Get(),
 			m_UploadTextureResource.Get(),
-			0, 1, 0, &textureData
-		);
+			0, 0, 1, &textureData
+		);//内部是先将数据复制到上传堆，然后再从上传堆复制到默认堆，自动调用CopyTextureRegion拷贝上上传堆到默认堆
 		barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_DefaultTextureResource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
 		m_CommandList->ResourceBarrier(1, &barrier);
 		m_CommandList->Close();
+		// 用于传递命令用的临时 ID3D12CommandList 数组
 		ID3D12CommandList* _temp_cmdlists[] = { m_CommandList.Get() };
+
+		// 提交复制命令！GPU 开始复制！
 		m_CommandQueue->ExecuteCommandLists(1, _temp_cmdlists);
 
-
+		// 将围栏预定值设定为下一帧，注意复制资源也需要围栏等待，否则会发生资源冲突
 		FenceValue++;
+		// 在命令队列 (命令队列在 GPU 端) 设置围栏预定值，此命令会加入到命令队列中
+		// 命令队列执行到这里会修改围栏值，表示复制已完成，"击中"围栏
 		m_CommandQueue->Signal(m_Fence.Get(), FenceValue);
+		// 设置围栏的预定事件，当复制完成时，围栏被"击中"，激发预定事件，将事件由无信号状态转换成有信号状态
 		m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
+
 	}
+
 
 	void CreateSRV()
 	{
@@ -778,14 +795,14 @@ public:
 		ComPtr<ID3DBlob> VertexShaderBlob;
 		ComPtr<ID3DBlob> PixelShaderBlob;
 		ComPtr<ID3DBlob> ErrorBlob;
-		D3DCompileFromFile(L"shader.hlsl", nullptr, nullptr, "VSMain", "vs_5_1", 0, 0, &VertexShaderBlob, nullptr);
+		D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\FirstPersionView\\shader.hlsl", nullptr, nullptr, "VSMain", "vs_5_1", 0, 0, &VertexShaderBlob, nullptr);
 		if (ErrorBlob)		// 如果着色器编译出错，ErrorBlob 可以提供报错信息
 		{
 			OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
 			OutputDebugStringA("\n");
 		}
 		// 编译像素着色器 Pixel Shader
-		D3DCompileFromFile(L"shader.hlsl", nullptr, nullptr, "PSMain", "ps_5_1", NULL, NULL, &PixelShaderBlob, &ErrorBlob);
+		D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\FirstPersionView\\shader.hlsl", nullptr, nullptr, "PSMain", "ps_5_1", NULL, NULL, &PixelShaderBlob, &ErrorBlob);
 		if (ErrorBlob)		// 如果着色器编译出错，ErrorBlob 可以提供报错信息
 		{
 			OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
@@ -803,14 +820,33 @@ public:
 		PsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 		PsoDesc.NumRenderTargets = 1;
 		PsoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		PsoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 		PsoDesc.SampleDesc.Count = 1;
 		PsoDesc.SampleMask = UINT_MAX;
 
-		m_D3D12Device->CreateGraphicsPipelineState(&PsoDesc, IID_PPV_ARGS(&m_PipelineStateObject));
+		HRESULT hr = m_D3D12Device->CreateGraphicsPipelineState(&PsoDesc, IID_PPV_ARGS(&m_PipelineStateObject));
+		if (FAILED(hr)) {
+			WCHAR errorMsg[1024] = { 0 };
+			// 用 FormatMessage 解析 HRESULT 为可读字符串
+			FormatMessage(
+				FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+				nullptr,        // 无模块句柄（从系统错误表取）
+				hr,             // 要解析的 HRESULT
+				MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // 语言（中性）
+				errorMsg,       // 输出缓冲区
+				_countof(errorMsg), // 缓冲区大小
+				nullptr
+			);
 
+			// 拼接并显示错误信息
+			std::wstringstream msg;
+			msg << L"创建资源失败！错误码: 0x" << std::hex << hr << L"\n" << errorMsg;
+			MessageBox(nullptr, msg.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
+			return;
+		}
 	}
 
-	void CreateVertexBuffer()
+	void CreateVertexResource()
 	{
 #pragma region 顶点信息
 		// CPU 高速缓存上的顶点信息数组，注意 DirectX 使用的是左手坐标系，写顶点信息时，请比一比你的左手！
@@ -856,7 +892,7 @@ public:
 
 		CD3DX12_RESOURCE_DESC VertexDesc{};
 		VertexDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		VertexDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+		VertexDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 		VertexDesc.Width = sizeof(vertexs);
 		VertexDesc.Height = 1;
 		VertexDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -865,9 +901,28 @@ public:
 		VertexDesc.SampleDesc.Count = 1;
 
 		D3D12_HEAP_PROPERTIES UploadHeapProperties{ D3D12_HEAP_TYPE_UPLOAD };
-		m_D3D12Device->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &VertexDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_VertexResource));
+		HRESULT hr =m_D3D12Device->CreateCommittedResource(&UploadHeapProperties, D3D12_HEAP_FLAG_NONE, &VertexDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_VertexResource));
+		if (FAILED(hr)) {
+			WCHAR errorMsg[1024] = { 0 };
+			// 用 FormatMessage 解析 HRESULT 为可读字符串
+			FormatMessage(
+				FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+				nullptr,        // 无模块句柄（从系统错误表取）
+				hr,             // 要解析的 HRESULT
+				MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // 语言（中性）
+				errorMsg,       // 输出缓冲区
+				_countof(errorMsg), // 缓冲区大小
+				nullptr
+			);
+
+			// 拼接并显示错误信息
+			std::wstringstream msg;
+			msg << L"创建顶点资源失败！错误码: 0x" << std::hex << hr << L"\n" << errorMsg;
+			MessageBox(nullptr, msg.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
+			return;
+		}
 		BYTE* m_VertexData = nullptr;
-		m_VertexResource->Map(0, nullptr, (void**)&m_VertexData);
+		m_VertexResource->Map(0, nullptr, reinterpret_cast<void**>(&m_VertexData));
 		memcpy(m_VertexData, vertexs, sizeof(vertexs));
 		m_VertexResource->Unmap(0, nullptr);
 
@@ -878,7 +933,7 @@ public:
 	}
 
 
-	void CreateIndexBuffer()
+	void CreateIndexResource()
 	{
 		// 顶点索引数组，注意这里的 UINT == UINT32，后面填的格式 (步长) 必须是 DXGI_FORMAT_R32_UINT，否则会出错
 		UINT IndexArray[36] =
@@ -899,7 +954,7 @@ public:
 
 		CD3DX12_RESOURCE_DESC IndexDesc{};
 		IndexDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		IndexDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+		IndexDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR; //缓冲区就是一维的，只有纹理资源可以使用D3D12_TEXTURE_LAYOUT_UNKNOWN;
 		IndexDesc.Width = sizeof(IndexArray);
 		IndexDesc.Height = 1;
 		IndexDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -927,15 +982,208 @@ public:
 	void Render()
 	{
 		UpdateConstantBuffer();
-
 		RTVHandle = m_RTVHeap->GetCPUDescriptorHandleForHeapStart();
 		FrameIndex = m_DXGISwapChain->GetCurrentBackBufferIndex();
 		RTVHandle.ptr += FrameIndex * RTVDescriptorSize;
+		
 		m_CommandAllocator->Reset();
-		m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
-		barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_RenderTarget[FrameIndex].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET);
-	
-	
-	
+        m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
+		//设置资源屏障
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			m_RenderTarget[FrameIndex].Get(),
+			D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET
+		);
+		m_CommandList->ResourceBarrier(1, &barrier);
+		//设置输出对象
+		m_CommandList->OMSetRenderTargets(1, &RTVHandle, false, nullptr);
+		m_CommandList->ClearRenderTargetView(RTVHandle, DirectX::Colors::SkyBlue, 0, nullptr);
+		//设置根签名
+		m_CommandList->SetGraphicsRootSignature(m_RootSignature.Get());
+		m_CommandList->SetPipelineState(m_PipelineStateObject.Get());
+
+		m_CommandList->RSSetViewports(1, &viewPort);
+		m_CommandList->RSSetScissorRects(1, &ScissorRect);
+
+		ID3D12DescriptorHeap* Heaps[] = { m_SRVHeap.Get() };
+		m_CommandList->SetDescriptorHeaps(_countof(Heaps), Heaps);
+		m_CommandList->SetGraphicsRootDescriptorTable(0, SRV_GPUHandle);
+		m_CommandList->SetGraphicsRootConstantBufferView(1, m_CBVResource->GetGPUVirtualAddress());
+
+		m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        m_CommandList->IASetVertexBuffers(0, 1, &VertexBufferView);
+        m_CommandList->IASetIndexBuffer(&IndexBufferView);
+        m_CommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			m_RenderTarget[FrameIndex].Get(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PRESENT
+		);
+		m_CommandList->ResourceBarrier(1, &barrier);
+		m_CommandList->Close();
+
+		ID3D12CommandList* _temp_cmdlists[] = { m_CommandList.Get() };
+		m_CommandQueue->ExecuteCommandLists(_countof(_temp_cmdlists), _temp_cmdlists);
+        m_DXGISwapChain->Present(1, 0);
+
+		FenceValue++;
+        m_CommandQueue->Signal(m_Fence.Get(), FenceValue);
+		m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
+	}
+	// 渲染循环
+	void RenderLoop()
+	{
+		bool isExit = false;	// 是否退出
+		MSG msg = {};			// 消息结构体
+
+		while (isExit != true)
+		{
+			// MsgWaitForMultipleObjects 用于多个线程的无阻塞等待，返回值是激发事件 (线程) 的 ID
+			// 经过该函数后 RenderEvent 也会自动重置为无信号状态，因为我们创建事件的时候指定了第二个参数为 false
+			DWORD ActiveEvent = ::MsgWaitForMultipleObjects(1, &RenderEvent, false, INFINITE, QS_ALLINPUT);
+
+			switch (ActiveEvent - WAIT_OBJECT_0)
+			{
+			case 0:				// ActiveEvent 是 0，说明渲染事件已经完成了，进行下一次渲染
+			{
+				Render();
+				Sleep(10);
+			}
+			break;
+
+
+			case 1:				// ActiveEvent 是 1，说明渲染事件未完成，CPU 主线程同时处理窗口消息，防止界面假死
+			{
+				// 查看消息队列是否有消息，如果有就获取。 PM_REMOVE 表示获取完消息，就立刻将该消息从消息队列中移除
+				while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+				{
+					// 如果程序没有收到退出消息，就向操作系统发出派发消息的命令
+					if (msg.message != WM_QUIT)
+					{
+						TranslateMessage(&msg);		// 翻译消息，当键盘按键发出信号 (WM_KEYDOWN)，将虚拟按键值转换为对应的 ASCII 码，同时产生 WM_CHAR 消息
+						DispatchMessage(&msg);		// 派发消息，通知操作系统调用回调函数处理消息
+					}
+					else
+					{
+						isExit = true;							// 收到退出消息，就退出消息循环
+					}
+				}
+			}
+			break;
+
+
+			case WAIT_TIMEOUT:	// 渲染超时
+			{
+
+			}
+			break;
+
+			}
+		}
+	}
+
+	// 回调函数，处理窗口产生的消息
+	// WASD 键 —— WM_CHAR 字符消息 —— 摄像机前后左右移动
+	// 鼠标长按左键移动 —— WM_MOUSEMOVE 鼠标移动消息 —— 摄像机视角旋转
+	// 关闭窗口 —— WM_DESTROY 窗口销毁消息 —— 窗口关闭，程序进程退出
+	LRESULT CALLBACK CallBackFunc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+	{
+		// 用 switch 将第二个参数分流，每个 case 分别对应一个窗口消息
+		switch (msg)
+		{
+		case WM_DESTROY:			// 窗口被销毁 (当按下右上角 X 关闭窗口时)
+		{
+			PostQuitMessage(0);		// 向操作系统发出退出请求 (WM_QUIT)，结束消息循环
+		}
+		break;
+
+
+		case WM_CHAR:	// 获取键盘产生的字符消息，TranslateMessage 会将虚拟键码翻译成字符码，同时产生 WM_CHAR 消息
+		{
+			switch (wParam)		// wParam 是按键对应的字符 ASCII 码
+			{
+			case 'w':
+			case 'W':	// 向前移动
+				m_FirstCamera.Walk(0.1);
+				break;
+
+			case 's':
+			case 'S':	// 向后移动
+				m_FirstCamera.Walk(-0.1);
+				break;
+
+			case 'a':
+			case 'A':	// 向左移动
+				m_FirstCamera.Strafe(0.1);
+				break;
+
+			case 'd':
+			case 'D':	// 向右移动
+				m_FirstCamera.Strafe(-0.1);
+				break;
+			}
+		}
+		break;
+
+
+		case WM_MOUSEMOVE:	// 获取鼠标移动消息
+		{
+			switch (wParam)	// wParam 是鼠标按键的状态
+			{
+			case MK_LBUTTON:	// 当用户长按鼠标左键的同时移动鼠标，摄像机旋转
+				m_FirstCamera.CameraRotate();
+				break;
+
+				// 按键没按，鼠标只是移动也要更新，否则就会发生摄像机视角瞬移
+			default: m_FirstCamera.UpdateLastCursorPos();
+			}
+		}
+		break;
+
+
+		// 如果接收到其他消息，直接默认返回整个窗口
+		default: return DefWindowProc(hwnd, msg, wParam, lParam);
+
+		}
+
+		return 0;	// 注意这里！default 除外的分支都会运行到这里，因此需要 return 0，否则就会返回系统随机值，导致窗口无法正常显示
+	}
+
+	// 运行窗口
+	static void Run(HINSTANCE hins)
+	{
+		DX12Engine engine;
+		engine.InitWindow(hins);
+		engine.CreateDebugDevice();
+		engine.CreateDevice();
+		engine.CreateCommandComponents();
+		engine.CreateRenderTargets();
+		engine.CreateFence();
+
+		engine.LoadTextureFromFile();
+		engine.CreateSRVHeap();
+		engine.CreateUploadAndDefaultResource();
+		engine.CopyTextureDataToDefaultResource();
+		engine.CreateSRV();
+
+		engine.CreateCBVResource();
+
+		engine.CreateRootSignature();
+		engine.CreatePSO();
+
+		engine.CreateVertexResource();
+		engine.CreateIndexResource();
+
+		engine.RenderLoop();
 	}
 };
+
+
+// 主函数
+int WINAPI WinMain(HINSTANCE hins, HINSTANCE hPrev, LPSTR cmdLine, int cmdShow)
+{
+	DX12Engine::Run(hins);
+}
+
+
