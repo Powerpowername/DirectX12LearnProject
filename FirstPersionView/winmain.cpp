@@ -262,7 +262,7 @@ public:
 	void UpdateMVPMatrix()
 	{
 		ViewMatrix = XMMatrixLookAtLH(EyePosition, FocusPosition, UpDirection);
-		MVPMatrix = ViewMatrix * ModelMatrix * ProjectionMatrix;
+		MVPMatrix = ModelMatrix * ViewMatrix * ProjectionMatrix;
 	}
 	// 获取 MVP 矩阵
 	XMMATRIX& GetMVPMatrix()
@@ -272,6 +272,7 @@ public:
 		return MVPMatrix;
 	}
 };
+
 
 
 class DX12Engine
@@ -777,62 +778,73 @@ public:
 		m_D3D12Device->CreateRootSignature(0, SignatureBlob->GetBufferPointer(), SignatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature));
 	}
 
-	// 创建渲染管线状态对象 (Pipeline State Object, PSO)
 	void CreatePSO()
 	{
-		//输入布局是专门用来告诉 GPU 我们的顶点数据长什么样子的
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc{};
-		D3D12_INPUT_LAYOUT_DESC InputLayoutDesc{}; // 输入布局描述
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC PsoDesc{};
+		D3D12_INPUT_LAYOUT_DESC InputLayoutDesc{};
 		D3D12_INPUT_ELEMENT_DESC InputElementDesc[2]{
 			"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,D3D12_APPEND_ALIGNED_ELEMENT,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0,
 			"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,0,D3D12_APPEND_ALIGNED_ELEMENT,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0
 		};
 
-		InputLayoutDesc.NumElements = _countof(InputElementDesc); // 输入元素数量
-		InputLayoutDesc.pInputElementDescs = InputElementDesc; // 输入元素描述数组
-		PSODesc.InputLayout = InputLayoutDesc; // 输入布局
+		InputLayoutDesc.NumElements = _countof(InputElementDesc);
+		InputLayoutDesc.pInputElementDescs = InputElementDesc;
+
+		PsoDesc.InputLayout = InputLayoutDesc;
 
 
-
-		ComPtr<ID3DBlob> VertexShaderBlob = nullptr; // 顶点着色器的二进制代码
-		ComPtr<ID3DBlob> PixelShaderBlob = nullptr; // 像素着色器的二进制代码
-		ComPtr<ID3DBlob> ErrorBlob = nullptr; // 用于存储错误信息的 Blob
-		D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\Block/shader.hlsl", nullptr, nullptr, "VSMain", "vs_5_1", NULL, NULL, &VertexShaderBlob, &ErrorBlob);
-		if (ErrorBlob != nullptr)
+		ComPtr<ID3DBlob> VertexShaderBlob;
+		ComPtr<ID3DBlob> PixelShaderBlob;
+		ComPtr<ID3DBlob> ErrorBlob;
+		D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\FirstPersionView\\shader.hlsl", nullptr, nullptr, "VSMain", "vs_5_1", 0, 0, &VertexShaderBlob, nullptr);
+		if (ErrorBlob)		// 如果着色器编译出错，ErrorBlob 可以提供报错信息
 		{
-			OutputDebugStringA((char*)ErrorBlob->GetBufferPointer());
+			OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
 			OutputDebugStringA("\n");
 		}
 		// 编译像素着色器 Pixel Shader
-		D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\Block/shader.hlsl", nullptr, nullptr, "PSMain", "ps_5_1", NULL, NULL, &PixelShaderBlob, &ErrorBlob);
+		D3DCompileFromFile(L"E:\\DirectX12Project\\DirectX12Pro\\FirstPersionView\\shader.hlsl", nullptr, nullptr, "PSMain", "ps_5_1", NULL, NULL, &PixelShaderBlob, &ErrorBlob);
 		if (ErrorBlob)		// 如果着色器编译出错，ErrorBlob 可以提供报错信息
 		{
 			OutputDebugStringA((const char*)ErrorBlob->GetBufferPointer());
 			OutputDebugStringA("\n");
 		}
 
-		PSODesc.VS.pShaderBytecode = VertexShaderBlob->GetBufferPointer(); // 顶点着色器代码
-		PSODesc.VS.BytecodeLength = VertexShaderBlob->GetBufferSize(); // 顶点着色器代码大小
-		PSODesc.PS.pShaderBytecode = PixelShaderBlob->GetBufferPointer(); // 像素着色器代码
-		PSODesc.PS.BytecodeLength = PixelShaderBlob->GetBufferSize(); // 像素着色器代码大小
+		PsoDesc.VS.pShaderBytecode = VertexShaderBlob->GetBufferPointer();
+		PsoDesc.VS.BytecodeLength = VertexShaderBlob->GetBufferSize();
+		PsoDesc.PS.pShaderBytecode = PixelShaderBlob->GetBufferPointer();
+		PsoDesc.PS.BytecodeLength = PixelShaderBlob->GetBufferSize();
+		PsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+		PsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
 
-		// Rasterizer 光栅化
-		PSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
-		PSODesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+		PsoDesc.pRootSignature = m_RootSignature.Get();
+		PsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		PsoDesc.NumRenderTargets = 1;
+		PsoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		PsoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+		PsoDesc.SampleDesc.Count = 1;
+		PsoDesc.SampleMask = UINT_MAX;
 
-		// 第一次设置根签名！本次设置是将根签名与 PSO 绑定，设置渲染管线的输入参数状态
-		PSODesc.pRootSignature = m_RootSignature.Get();
+		HRESULT hr = m_D3D12Device->CreateGraphicsPipelineState(&PsoDesc, IID_PPV_ARGS(&m_PipelineStateObject));
+		if (FAILED(hr)) {
+			WCHAR errorMsg[1024] = { 0 };
+			// 用 FormatMessage 解析 HRESULT 为可读字符串
+			FormatMessage(
+				FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+				nullptr,        // 无模块句柄（从系统错误表取）
+				hr,             // 要解析的 HRESULT
+				MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // 语言（中性）
+				errorMsg,       // 输出缓冲区
+				_countof(errorMsg), // 缓冲区大小
+				nullptr
+			);
 
-		PSODesc.pRootSignature = m_RootSignature.Get(); // 根签名
-		PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // 图元拓扑类型是三角形
-		PSODesc.NumRenderTargets = 1; // 一个渲染目标
-		PSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // 渲染目标格式
-		PSODesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-		PSODesc.SampleDesc.Count = 1; // 多重采样为 1
-		PSODesc.SampleMask = UINT_MAX; // 采样掩码
-		m_D3D12Device->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(&m_PipelineStateObject));
-
-
+			// 拼接并显示错误信息
+			std::wstringstream msg;
+			msg << L"创建资源失败！错误码: 0x" << std::hex << hr << L"\n" << errorMsg;
+			MessageBox(nullptr, msg.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
+			return;
+		}
 	}
 
 	void CreateVertexResource()
