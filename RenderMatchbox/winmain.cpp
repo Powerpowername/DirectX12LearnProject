@@ -283,6 +283,27 @@ public:
 	}
 };
 
+struct VERTEX
+{
+	XMFLOAT4 position;			// 顶点在模型坐标系的坐标
+	XMFLOAT2 texcoordUV;		// 顶点纹理 UV 坐标
+};
+// 模型类，这是个抽象类，有两个纯虚函数，派生类需要实现下面两个纯虚函数才能创建实例
+class Model
+{ 
+protected:
+	XMMATRIX ModelMatrix = XMMatrixIdentity();
+	ComPtr<ID3D12Resource> m_VertexBuffer;
+	ComPtr<ID3D12Resource> m_IndexResource;
+	ComPtr<ID3D12Resource> m_ModelMatrixResource;
+
+
+
+
+};
+
+
+
 // DX12 引擎
 class DX12Engine
 {
@@ -291,31 +312,46 @@ private:
 	int WindowHeight = 480;		// 窗口高度
 	HWND m_hwnd;				// 窗口句柄
 
-	ComPtr<ID3D12Debug> m_D3D12DebugDevice;
-	UINT m_DXGICreateFactoryFlag = 0;
-	
-	ComPtr<IDXGIFactory5> m_DXGIFactory;
-	ComPtr<IDXGIAdapter1> m_DXGIAdapter;
-	ComPtr<ID3D12Device4> m_D3D12Device;
+	ComPtr<ID3D12Debug> m_D3D12DebugDevice;					// D3D12 调试层设备
+	UINT m_DXGICreateFactoryFlag = NULL;					// 创建 DXGI 工厂时需要用到的标志
 
-	ComPtr<ID3D12CommandQueue> m_CommandQueue;
-	ComPtr<ID3D12CommandAllocator> m_CommadAllocator;
-	ComPtr<ID3D12CommandList> m_CommadList;
+	ComPtr<IDXGIFactory5> m_DXGIFactory;					// DXGI 工厂
+	ComPtr<IDXGIAdapter1> m_DXGIAdapter;					// 显示适配器 (显卡)
+	ComPtr<ID3D12Device4> m_D3D12Device;					// D3D12 核心设备
+
+	ComPtr<ID3D12CommandQueue> m_CommandQueue;				// 命令队列
+	ComPtr<ID3D12CommandAllocator> m_CommandAllocator;		// 命令分配器
+	ComPtr<ID3D12GraphicsCommandList> m_CommandList;		// 命令列表
+
+	ComPtr<IDXGISwapChain3> m_DXGISwapChain;				// DXGI 交换链
+	ComPtr<ID3D12DescriptorHeap> m_RTVHeap;					// RTV 描述符堆
+	ComPtr<ID3D12Resource> m_RenderTarget[3];				// 渲染目标缓冲区数组，每一副渲染缓冲对应一个窗口缓冲区
+	D3D12_CPU_DESCRIPTOR_HANDLE RTVHandle;					// RTV 描述符句柄
+	UINT RTVDescriptorSize = 0;								// RTV 描述符的大小
+	UINT FrameIndex = 0;									// 帧索引，表示当前渲染的第 i 帧 (第 i 个渲染目标)
+
+	ComPtr<ID3D12Fence> m_Fence;							// 围栏
+	UINT64 FenceValue = 0;									// 用于围栏等待的围栏值
+	HANDLE RenderEvent = NULL;								// GPU 渲染事件
+	D3D12_RESOURCE_BARRIER beg_barrier = {};				// 渲染开始的资源屏障，呈现 -> 渲染目标
+	D3D12_RESOURCE_BARRIER end_barrier = {};				// 渲染结束的资源屏障，渲染目标 -> 呈现
+
+	ComPtr<ID3D12DescriptorHeap> m_DSVHeap;					// DSV 描述符堆
+	D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle;					// DSV 描述符句柄
+	ComPtr<ID3D12Resource> m_DepthStencilBuffer;			// DSV 深度模板缓冲资源
+
+	// DSV 资源的格式
+	// 深度模板缓冲只支持四种格式:
+	// DXGI_FORMAT_D24_UNORM_S8_UINT	(每个像素占用四个字节 32 位，24 位无符号归一化浮点数留作深度值，8 位整数留作模板值)
+	// DXGI_FORMAT_D32_FLOAT_S8X24_UINT	(每个像素占用八个字节 64 位，32 位浮点数留作深度值，8 位整数留作模板值，其余 24 位保留不使用)
+	// DXGI_FORMAT_D16_UNORM			(每个像素占用两个字节 16 位，16 位无符号归一化浮点数留作深度值，范围 [0,1]，不使用模板)
+	// DXGI_FORMAT_D32_FLOAT			(每个像素占用四个字节 32 位，32 位浮点数留作深度值，不使用模板)
+	// 这里我们选择最常用的格式 DXGI_FORMAT_D24_UNORM_S8_UINT
+	DXGI_FORMAT DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
 
-	ComPtr<IDXGISwapChain3> m_DXGISwapChain;
-	ComPtr<ID3D12DescriptorHeap> m_RTVHeap;
-	ComPtr<ID3D12Resource> m_RenderTarget[3];
-	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVHandle;
-	UINT RTVDescriptorSize = 0;
-	UINT FrameIndex = 0;
-	
-	ComPtr<ID3D12Fence> m_Fence;
-	UINT64 FenceValue = 0;
-	HANDLE RenderEvent;
-	CD3DX12_RESOURCE_BARRIER barrier;
+	ModelManager m_ModelManager;							// 模型管理器，帮助管理并渲染模型
 
-	std::wstring TextureFilename = L"diamond_ore.png";		// 纹理文件名 (这里用的是相对路径)
 	ComPtr<IWICImagingFactory> m_WICFactory;				// WIC 工厂
 	ComPtr<IWICBitmapDecoder> m_WICBitmapDecoder;			// 位图解码器
 	ComPtr<IWICBitmapFrameDecode> m_WICBitmapDecodeFrame;	// 由解码器得到的单个位图帧
@@ -326,40 +362,326 @@ private:
 	UINT BitsPerPixel = 0;									// 图像深度，图片每个像素占用的比特数
 	UINT BytePerRowSize = 0;								// 纹理每行数据的真实字节大小，用于读取纹理数据、上传纹理资源
 	DXGI_FORMAT TextureFormat = DXGI_FORMAT_UNKNOWN;		// 纹理格式
-		
-	ComPtr<ID3D12Heap> SRVHeap;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE SRV_CPUHandle;
-	CD3DX12_GPU_DESCRIPTOR_HANDLE SRV_GPUHandle;
 
-	ComPtr<ID3D12Resource> m_UploadTextureResource;
-	ComPtr<ID3D12Resource> m_DefaultTextureResource;
+	ComPtr<ID3D12DescriptorHeap> m_SRVHeap;					// SRV 描述符堆
 
 	UINT TextureSize = 0;									// 纹理的真实大小 (单位：字节)
 	UINT UploadResourceRowSize = 0;							// 上传堆资源每行的大小 (单位：字节)
 	UINT UploadResourceSize = 0;							// 上传堆资源的总大小 (单位：字节)
 
-	ComPtr<ID3D12Resource> m_CBVResource;
+
+
+	ComPtr<ID3D12Resource> m_CBVResource;		// 常量缓冲资源，用于存放 MVP 矩阵，MVP 矩阵每帧都要更新，所以需要存储在常量缓冲区中
 	struct CBuffer								// 常量缓冲结构体
 	{
 		XMFLOAT4X4 MVPMatrix;		// MVP 矩阵，用于将顶点数据从顶点空间变换到齐次裁剪空间
 	};
-	CBuffer* MVPBuffer = nullptr;
-	D3D12_INDEX_BUFFER_VIEW IndexBufferView{};
+	CBuffer* MVPBuffer = nullptr;	// 常量缓冲结构体指针，里面存储的是 MVP 矩阵信息，下文 Map 后指针会指向 CBVResource 的地址
 
-	ComPtr<ID3D12Resource> m_VertexResource;
-	struct VERTEX											// 顶点数据结构体
-	{
-		XMFLOAT4 position;									// 顶点位置
-		XMFLOAT2 texcoordUV;								// 顶点纹理坐标
-	};
-	D3D12_VERTEX_BUFFER_VIEW VertexBufferView{};
-	
+	Camera m_FirstCamera;			// 第一人称摄像机
+
+	ComPtr<ID3D12RootSignature> m_RootSignature;			// 根签名
+	ComPtr<ID3D12PipelineState> m_PipelineStateObject;		// 渲染管线状态
+
 
 	// 视口
 	D3D12_VIEWPORT viewPort = D3D12_VIEWPORT{ 0, 0, float(WindowWidth), float(WindowHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
 	// 裁剪矩形
 	D3D12_RECT ScissorRect = D3D12_RECT{ 0, 0, WindowWidth, WindowHeight };
-
 public:
+	void InitWindow(HINSTANCE hins)
+	{
+		WNDCLASS  wc = {};
+		wc.hInstance = hins;
+		CallBackWrapper::Broker_Func = std::bind(&DX12Engine::CallBackFunc, this,
+			std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+		wc.lpfnWndProc = CallBackWrapper::CallBackFunc;
+		wc.lpszClassName = L"DX12Window";
+		RegisterClass(&wc);
+
+		m_hwnd = CreateWindow(wc.lpszClassName, L"Minecraft", WS_SYSMENU | WS_OVERLAPPED,
+			10, 10, WindowWidth, WindowHeight,
+			NULL, NULL, hins, NULL);
+
+		ShowWindow(m_hwnd, SW_SHOW);
+	}
+
+	void CreateDebugDevice()
+	{
+		::CoInitialize(nullptr);	// 注意这里！DX12 的所有设备接口都是基于 COM 接口的，我们需要先全部初始化为 nullptr
+
+#if defined(_DEBUG)
+		// 获取调试层设备接口
+		D3D12GetDebugInterface(IID_PPV_ARGS(&m_D3D12DebugDevice));
+		// 开启调试层
+		m_D3D12DebugDevice->EnableDebugLayer();
+		// 开启调试层后，创建 DXGI 工厂也需要 Debug Flag
+		m_DXGICreateFactoryFlag = DXGI_CREATE_FACTORY_DEBUG;
+#endif
+	}
+
+	bool CreateDevice()
+	{
+		CreateDXGIFactory2(m_DXGICreateFactoryFlag, IID_PPV_ARGS(&m_DXGIFactory));
+		// DX12 支持的所有功能版本，你的显卡最低需要支持 11.0
+		const D3D_FEATURE_LEVEL dx12SupportLevel[] =
+		{
+			D3D_FEATURE_LEVEL_12_2,		// 12.2
+			D3D_FEATURE_LEVEL_12_1,		// 12.1
+			D3D_FEATURE_LEVEL_12_0,		// 12.0
+			D3D_FEATURE_LEVEL_11_1,		// 11.1
+			D3D_FEATURE_LEVEL_11_0		// 11.0
+		};
+		for (UINT i = 0; m_DXGIFactory->EnumAdapters1(i, &m_DXGIAdapter) != ERROR_NOT_FOUND; i++)
+		{
+			// 找到显卡，就创建 D3D12 设备，从高到低遍历所有功能版本，创建成功就跳出
+			for (const auto& level : dx12SupportLevel)
+			{
+				// 创建 D3D12 核心层设备，创建成功就返回 true
+				if (SUCCEEDED(D3D12CreateDevice(m_DXGIAdapter.Get(), level, IID_PPV_ARGS(&m_D3D12Device))))
+				{
+					DXGI_ADAPTER_DESC1 adap = {};
+					m_DXGIAdapter->GetDesc1(&adap);
+					OutputDebugStringW(adap.Description);		// 在输出窗口上输出创建 D3D12 设备所用的显卡名称
+					return true;
+				}
+			}
+		}
+		if (m_D3D12Device == nullptr)
+		{
+			MessageBox(NULL, L"找不到任何能支持 DX12 的显卡，请升级电脑上的硬件！", L"错误", MB_OK | MB_ICONERROR);
+			return false;
+		}
+	}
+
+	void CreateCommandComponent()
+	{ 
+		D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+        queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+        queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+		m_D3D12Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_CommandQueue));
+        m_D3D12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_CommandAllocator));
+		m_D3D12Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_CommandList));
+		m_CommandList->Close();
+	}
+
+	void CreateRenderTarget()
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+        rtvHeapDesc.NumDescriptors = 3;
+        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+		m_D3D12Device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_RTVHeap));
+		
+		DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
+        swapChainDesc.BufferCount = 3;
+        swapChainDesc.Width = WindowWidth;
+        swapChainDesc.Height = WindowHeight;
+        swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        swapChainDesc.SampleDesc.Count = 1;
+        swapChainDesc.SampleDesc.Quality = 0;
+	    
+		ComPtr<IDXGISwapChain1> _temp_swapchain;
+		m_DXGIFactory->CreateSwapChainForHwnd(m_CommandQueue.Get(), m_hwnd, &swapChainDesc, nullptr, nullptr, &_temp_swapchain);
+        _temp_swapchain.As(&m_DXGISwapChain);
+
+		RTVHandle = m_RTVHeap->GetCPUDescriptorHandleForHeapStart();
+		RTVDescriptorSize = m_D3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		for (int i = 0; i < 3; i++)
+		{
+			m_DXGISwapChain->GetBuffer(i, IID_PPV_ARGS(&m_RenderTarget[i]));
+			m_D3D12Device->CreateRenderTargetView(m_RenderTarget[i].Get(), nullptr, RTVHandle);
+            RTVHandle.ptr += RTVDescriptorSize;
+		}
+	}
+	void CreateFence()
+	{
+		RenderEvent = CreateEvent(nullptr, false, true, nullptr);
+		m_D3D12Device->CreateFence(FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence));
+	}
+
+	void CreatDSVHeap()
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC DSVHeapDesc{};
+		DSVHeapDesc.NumDescriptors = 1;
+		DSVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+
+		m_D3D12Device->CreateDescriptorHeap(&DSVHeapDesc, IID_PPV_ARGS(&m_DSVHeap));
+
+		DSVHandle = m_DSVHeap->GetCPUDescriptorHandleForHeapStart();
+
+	}
+
+	void CreateDepthStencilBuffer()
+	{
+		CD3DX12_RESOURCE_DESC DSVResourceDesc{};
+		DSVResourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+			DSVFormat,
+			WindowWidth,
+			WindowHeight,
+			1, 1, 1, 0,
+			D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
+			D3D12_TEXTURE_LAYOUT_UNKNOWN
+		);
+
+		CD3DX12_CLEAR_VALUE DepthStencilBufferClearValue(
+			DSVFormat,
+			1.0f,
+			0.0f
+		);
+
+		CD3DX12_HEAP_PROPERTIES DefaultProperties(D3D12_HEAP_TYPE_DEFAULT);
+
+		m_D3D12Device->CreateCommittedResource(&DefaultProperties, D3D12_HEAP_FLAG_NONE,
+			&DSVResourceDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &DepthStencilBufferClearValue, IID_PPV_ARGS(&m_DepthStencilBuffer));
+	}
+
+	void CreatDSV()
+	{
+		D3D12_DEPTH_STENCIL_VIEW_DESC DSVDesc{};
+        DSVDesc.Format = DSVFormat;
+        DSVDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        DSVDesc.Flags = D3D12_DSV_FLAG_NONE;
+		m_D3D12Device->CreateDepthStencilView(m_DepthStencilBuffer.Get(), &DSVDesc, DSVHandle);
+	}
+
+	void CreateSRVHeap()
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC SRVHeapDesc{};
+		SRVHeapDesc.NumDescriptors = m_ModelManager.Texture_SRV_Map.size();
+        SRVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        SRVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+		m_D3D12Device->CreateDescriptorHeap(&SRVHeapDesc, IID_PPV_ARGS(&m_SRVHeap));
+
+	}
+
+	void StartCommandRecord()
+	{
+		m_CommandAllocator->Reset();
+        m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
+	}
+
+	// 加载纹理到内存中
+	bool LoadTextureFromFile(std::wstring TextureFilename)
+	{
+		// 如果还没创建 WIC 工厂，就新建一个 WIC 工厂实例。注意！WIC 工厂不可以重复释放与创建！
+		if (m_WICFactory == nullptr) CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_WICFactory));
+
+		// 创建图片解码器，并将图片读入到解码器中
+		HRESULT hr = m_WICFactory->CreateDecoderFromFilename(TextureFilename.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &m_WICBitmapDecoder);
+
+		std::wostringstream output_str;		// 用于格式化字符串
+		switch (hr)
+		{
+		case S_OK: break;	// 解码成功，直接 break 进入下一步即可
+
+		case HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND):	// 文件找不到
+			output_str << L"找不到文件 " << TextureFilename << L" ！请检查文件路径是否有误！";
+			MessageBox(NULL, output_str.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
+			return false;
+
+		case HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT):	// 文件句柄正在被另一个应用进程占用
+			output_str << L"文件 " << TextureFilename << L" 已经被另一个应用进程打开并占用了！请先关闭那个应用进程！";
+			MessageBox(NULL, output_str.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
+			return false;
+
+		case WINCODEC_ERR_COMPONENTNOTFOUND:			// 找不到可解码的组件，说明这不是有效的图像文件
+			output_str << L"文件 " << TextureFilename << L" 不是有效的图像文件，无法解码！请检查文件是否为图像文件！";
+			MessageBox(NULL, output_str.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
+			return false;
+
+		default:			// 发生其他未知错误
+			output_str << L"文件 " << TextureFilename << L" 解码失败！发生了其他错误，错误码：" << hr << L" ，请查阅微软官方文档。";
+			MessageBox(NULL, output_str.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
+			return false;
+		}
+
+		// 获取图片数据的第一帧，这个 GetFrame 可以用于 gif 这种多帧动图
+		m_WICBitmapDecoder->GetFrame(0, &m_WICBitmapDecodeFrame);
+
+
+		// 获取图片格式，并将它转化为 DX12 能接受的纹理格式
+		// 如果碰到格式无法支持的错误，可以用微软提供的 画图3D 来转换，强力推荐!
+		WICPixelFormatGUID SourceFormat = {};				// 源图格式
+		GUID TargetFormat = {};								// 目标格式
+
+		m_WICBitmapDecodeFrame->GetPixelFormat(&SourceFormat);						// 获取源图格式
+
+		if (DX12TextureHelper::GetTargetPixelFormat(&SourceFormat, &TargetFormat))	// 获取目标格式
+		{
+			TextureFormat = DX12TextureHelper::GetDXGIFormatFromPixelFormat(&TargetFormat);	// 获取 DX12 支持的格式
+		}
+		else	// 如果没有可支持的目标格式
+		{
+			::MessageBox(NULL, L"此纹理不受支持!", L"提示", MB_OK);
+			return false;
+		}
+
+
+		// 获取目标格式后，将纹理转换为目标格式，使其能被 DX12 使用
+		m_WICFactory->CreateFormatConverter(&m_WICFormatConverter);		// 创建图片转换器
+		// 初始化转换器，实际上是把位图进行了转换
+		m_WICFormatConverter->Initialize(m_WICBitmapDecodeFrame.Get(), TargetFormat, WICBitmapDitherTypeNone,
+			nullptr, 0.0f, WICBitmapPaletteTypeCustom);
+		// 将位图数据继承到 WIC 位图资源，我们要在这个 WIC 位图资源上获取信息
+		m_WICFormatConverter.As(&m_WICBitmapSource);
+
+
+
+		m_WICBitmapSource->GetSize(&TextureWidth, &TextureHeight);		// 获取纹理宽高
+
+		ComPtr<IWICComponentInfo> _temp_WICComponentInfo = {};			// 用于获取 BitsPerPixel 纹理图像深度
+		ComPtr<IWICPixelFormatInfo> _temp_WICPixelInfo = {};			// 用于获取 BitsPerPixel 纹理图像深度
+		m_WICFactory->CreateComponentInfo(TargetFormat, &_temp_WICComponentInfo);
+		_temp_WICComponentInfo.As(&_temp_WICPixelInfo);
+		_temp_WICPixelInfo->GetBitsPerPixel(&BitsPerPixel);				// 获取 BitsPerPixel 图像深度
+
+		return true;
+	}
+
+	// 上取整算法，对 A 向上取整，判断至少要多少个长度为 B 的空间才能容纳 A，用于内存对齐
+	inline UINT Ceil(UINT A, UINT B)
+	{
+		return (A + B - 1) / B;
+	}
+
+	void CreateUploadAndDefaultResource(ModelManager::TEXTURE_MAP_INFO& Info)
+	{
+		BytePerRowSize = TextureWidth * BitsPerPixel / 8;
+		TextureSize = BytePerRowSize * TextureHeight;
+		UploadResourceRowSize = Ceil(BytePerRowSize, 256) * 256;
+		UploadResourceSize = UploadResourceRowSize * (TextureHeight - 1) + BytePerRowSize;
+
+		CD3DX12_HEAP_PROPERTIES HeapProps(D3D12_HEAP_TYPE_DEFAULT);
+        CD3DX12_RESOURCE_DESC UploadHeapDesc = CD3DX12_RESOURCE_DESC::Buffer(UploadResourceSize);
+
+		m_D3D12Device->CreateCommittedResource(
+            &HeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &UploadHeapDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&Info.UploadHeapTextureResource));
+
+		CD3DX12_HEAP_PROPERTIES HeapProps1(D3D12_HEAP_TYPE_DEFAULT);
+		CD3DX12_RESOURCE_DESC DefaultHeapDesc = CD3DX12_RESOURCE_DESC::Buffer(UploadResourceSize);
+
+		m_D3D12Device->CreateCommittedResource(
+			&HeapProps1,
+			D3D12_HEAP_FLAG_NONE,
+			&DefaultHeapDesc,
+			D3D12_RESOURCE_STATE_COMMON,
+			nullptr,
+			IID_PPV_ARGS(&Info.DefaultHeapTextureResource)
+		);
+
+	}
+
+
+
+
 
 };
