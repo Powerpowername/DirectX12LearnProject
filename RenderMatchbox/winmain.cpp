@@ -9,6 +9,7 @@
 #include <string>
 #include <sstream>
 #include <functional>
+#include <unordered_map>
 #include "directx/d3dx12.h"
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")				// 链接 DXGI DLL
@@ -293,15 +294,165 @@ class Model
 { 
 protected:
 	XMMATRIX ModelMatrix = XMMatrixIdentity();
-	ComPtr<ID3D12Resource> m_VertexBuffer;
+	ComPtr<ID3D12Resource> m_VertexResource;
 	ComPtr<ID3D12Resource> m_IndexResource;
 	ComPtr<ID3D12Resource> m_ModelMatrixResource;
 
+	D3D12_VERTEX_BUFFER_VIEW VertexBufferView[2];
+    D3D12_INDEX_BUFFER_VIEW IndexBufferView;
+	// 纹理名 - GPU 句柄映射表，用于索引纹理，设置根参数
+	std::unordered_map<std::string, D3D12_GPU_DESCRIPTOR_HANDLE> Texture_GPUHandle_Map;
+	void AppendTextureKey(std::string&& TextureName)
+	{
+		Texture_GPUHandle_Map[TextureName] = {};
+	}
 
+public:
+	// 类外获取模型需要的纹理，返回映射表的只读引用
+	const std::unordered_map<std::string, D3D12_GPU_DESCRIPTOR_HANDLE>& RequestForTextureMap()
+	{
+		return Texture_GPUHandle_Map;
+	}
 
+	// 模型获取类外已经创建纹理 SRV 描述符的 SRVHandle
+	void SetTextureGPUHandle(std::string TextureName, D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle)
+	{
+		Texture_GPUHandle_Map[TextureName] = GPUHandle;
+	}
 
+	// 获取模型矩阵
+	XMMATRIX GetModelMatrix()
+	{
+		return ModelMatrix;
+	}
+
+	// 设置模型矩阵
+	void SetModelMatrix(XMMATRIX Matrix)
+	{
+		ModelMatrix = Matrix;
+	}
+
+	// 创建资源与描述符，这个是纯虚函数，实例类需要实现
+	virtual void CreateResourceAndDescriptor(ComPtr<ID3D12Device4>& pD3D12Device) = 0;
+
+	// 绘制模型，这个也是纯虚函数，实例类需要实现
+	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) = 0;
 };
 
+class SoildBlock : public Model
+{ 
+	inline static VERTEX VertexArray[24] =
+	{
+		// 正面
+		{{0,1,0,1},{0,0}},
+		{{1,1,0,1},{1,0}},
+		{{1,0,0,1},{1,1}},
+		{{0,0,0,1},{0,1}},
+
+		// 背面
+		{{1,1,1,1},{0,0}},
+		{{0,1,1,1},{1,0}},
+		{{0,0,1,1},{1,1}},
+		{{1,0,1,1},{0,1}},
+
+		// 左面
+		{{0,1,1,1},{0,0}},
+		{{0,1,0,1},{1,0}},
+		{{0,0,0,1},{1,1}},
+		{{0,0,1,1},{0,1}},
+
+		// 右面
+		{{1,1,0,1},{0,0}},
+		{{1,1,1,1},{1,0}},
+		{{1,0,1,1},{1,1}},
+		{{1,0,0,1},{0,1}},
+
+		// 上面
+		{{0,1,1,1},{0,0}},
+		{{1,1,1,1},{1,0}},
+		{{1,1,0,1},{1,1}},
+		{{0,1,0,1},{0,1}},
+
+		// 下面
+		{{0,0,0,1},{0,0}},
+		{{1,0,0,1},{1,0}},
+		{{1,0,1,1},{1,1}},
+		{{0,0,1,1},{0,1}}
+	};
+	// 注意这里的 UINT == UINT32，后面填的格式 (步长) 必须是 DXGI_FORMAT_R32_UINT，否则会出错
+	inline static UINT IndexArray[36] =
+	{
+		// 正面
+		0,1,2,0,2,3,
+		// 背面
+		4,5,6,4,6,7,
+		// 左面
+		8,9,10,8,10,11,
+		// 右面
+		12,13,14,12,14,15,
+		// 上面
+		16,17,18,16,18,19,
+		// 下面
+		20,21,22,20,22,23
+	};
+
+
+public:
+	virtual void CreateResourceAndDescriptor(ComPtr<ID3D12Device4>& pD3D12Device) override
+	{
+		// 临时设置 XMFLOAT4X4 类型的模型矩阵，XMFLOAT4X4 擅长存储与传递，XMMATRIX 擅长并行运算
+		XMFLOAT4X4 _temp_ModelMatrix = {};
+		XMStoreFloat4x4(&_temp_ModelMatrix, ModelMatrix);
+
+		// 用于批量复制模型矩阵的 vector，vector 的底层是一块连续内存，memcpy 复制连续内存有 CPU 优化，能快很多
+		std::vector<XMFLOAT4X4> _temp_ModelMatrixGroup;
+		// 批量填充 ModelMatrix 到 ModelMatrixGroup
+		_temp_ModelMatrixGroup.assign(24, _temp_ModelMatrix);
+
+		//创建模型矩阵资源
+		CD3DX12_RESOURCE_DESC UploadResourceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(XMFLOAT4X4) * 24);
+		CD3DX12_HEAP_PROPERTIES HeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+		pD3D12Device->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE,
+			&UploadResourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_ModelMatrixResource));
+		//修改资源大小，创建顶点资源
+		UploadResourceDesc.Width = sizeof(VERTEX) * 24;
+		pD3D12Device->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE,
+			&UploadResourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_VertexResource));
+		//修改资源大小，创建索引资源
+		UploadResourceDesc.Width = sizeof(UINT) * 36;
+		pD3D12Device->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE,
+			&UploadResourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_IndexResource));
+
+		//存储顶点资源
+		BYTE* TransmitPointer = nullptr;
+		m_VertexResource->Map(0, nullptr, reinterpret_cast<void**>(&TransmitPointer));
+		memcpy(TransmitPointer, _temp_ModelMatrixGroup.data(), sizeof(XMFLOAT4X4) * 24);
+		m_VertexResource->Unmap(0, nullptr);
+		//存储索引资源
+		m_IndexResource->Map(0, nullptr, reinterpret_cast<void**>(&TransmitPointer));
+        memcpy(TransmitPointer, IndexArray, sizeof(UINT) * 36);
+        m_IndexResource->Unmap(0, nullptr);
+		//存储矩阵资源
+		m_ModelMatrixResource->Map(0, nullptr, reinterpret_cast<void**>(&TransmitPointer));
+		memcpy(TransmitPointer, &_temp_ModelMatrixGroup[0], 24 * sizeof(XMFLOAT4X4));
+		m_ModelMatrixResource->Unmap(0, nullptr);
+
+		VertexBufferView[0].BufferLocation = m_VertexResource->GetGPUVirtualAddress();
+		VertexBufferView[0].SizeInBytes = 24 * sizeof(VERTEX);
+		VertexBufferView[0].StrideInBytes = sizeof(VERTEX);
+
+		VertexBufferView[1].BufferLocation = m_ModelMatrixResource->GetGPUVirtualAddress();
+		VertexBufferView[1].SizeInBytes = 24 * sizeof(XMFLOAT4X4);
+		VertexBufferView[1].StrideInBytes = sizeof(XMFLOAT4X4);
+
+		IndexBufferView.BufferLocation = m_IndexResource->GetGPUVirtualAddress();
+		IndexBufferView.SizeInBytes = 36 * sizeof(UINT);
+		IndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+
+
+	}
+};
 
 
 // DX12 引擎
