@@ -339,6 +339,7 @@ public:
 	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) = 0;
 };
 
+// 全遮挡固体方块类 (抽象类)，继承自模型类，只定义 CreateResourceAndDescriptor 这个函数，DrawModel 仍然需要派生类实现
 class SoildBlock : public Model
 { 
 	inline static VERTEX VertexArray[24] =
@@ -453,6 +454,143 @@ public:
 
 	}
 };
+
+// 台阶方块类 (抽象类)，继承自模型类，只定义 CreateResourceAndDescriptor 这个函数，DrawModel 仍然需要派生类实现
+class SoildStair : public Model
+{
+protected:
+	inline static VERTEX VertexArray[40] =
+	{
+		// 台阶底面
+		{{0,0,0,1},{0,0}},
+		{{1,0,0,1},{1,0}},
+		{{1,0,1,1},{1,1}},
+		{{0,0,1,1},{0,1}},
+
+		// 台阶背面
+		{{1,1,1,1},{0,0}},
+		{{0,1,1,1},{1,0}},
+		{{0,0,1,1},{1,1}},
+		{{1,0,1,1},{0,1}},
+
+		// 台阶正面
+		{{0,0.5,0,1},{0,0.5}},
+		{{1,0.5,0,1},{1,0.5}},
+		{{1,0,0,1},{1,1}},
+		{{0,0,0,1},{0,1}},
+
+		{{0,1,0.5,1},{0,0}},
+		{{1,1,0.5,1},{1,0}},
+		{{1,0.5,0.5,1},{1,0.5}},
+		{{0,0.5,0.5,1},{0,0.5}},
+
+		// 台阶顶面
+		{{0,0.5,0.5,1},{0,0.5}},
+		{{1,0.5,0.5,1},{1,0.5}},
+		{{1,0.5,0,1},{1,1}},
+		{{0,0.5,0,1},{0,1}},
+
+		{{0,1,1,1},{0,0}},
+		{{1,1,1,1},{1,0}},
+		{{1,1,0.5,1},{1,0.5}},
+		{{0,1,0.5,1},{0,0.5}},
+
+		// 台阶左面
+		{{0,1,1,1},{0,0}},
+		{{0,1,0.5,1},{0.5,0}},
+		{{0,0,0.5,1},{0.5,1}},
+		{{0,0,1,1},{0,1}},
+
+		{{0,0.5,0.5,1},{0.5,0.5}},
+		{{0,0.5,0,1},{1,0.5}},
+		{{0,0,0,1},{1,1}},
+		{{0,0,0.5,1},{0.5,1}},
+
+		// 台阶右面
+		{{1,1,0.5,1},{0.5,0}},
+		{{1,1,1,1},{1,0}},
+		{{1,0,1,1},{1,1}},
+		{{1,0,0.5,1},{0.5,1}},
+
+		{{1,0.5,0,1},{0,0.5}},
+		{{1,0.5,0.5,1},{0.5,0.5}},
+		{{1,0,0.5,1},{0.5,1}},
+		{{1,0,0,1},{0,1}}
+	};
+
+	inline static UINT IndexArray[60] =
+	{
+		// 台阶底面
+		0,1,2,0,2,3,
+		// 台阶背面
+		4,5,6,4,6,7,
+		// 台阶正面
+		8,9,10,8,10,11,
+		12,13,14,12,14,15,
+		// 台阶顶面
+		16,17,18,16,18,19,
+		20,21,22,20,22,23,
+		// 台阶左面
+		24,25,26,24,26,27,
+		28,29,30,28,30,31,
+		// 台阶右面
+		32,33,34,32,34,35,
+		36,37,38,36,38,39
+	};
+
+public:
+	virtual void CreateResourceAndDescriptor(ComPtr<ID3D12Device4>& pD3D12Device) override
+	{ 
+		XMFLOAT4X4 _temp_ModelMatrix = {};
+		XMStoreFloat4x4(&_temp_ModelMatrix, ModelMatrix);
+		std::vector<XMFLOAT4X4> _temp_ModelMatrixGroup;
+		_temp_ModelMatrixGroup.assign(40, _temp_ModelMatrix);
+		//矩阵资源
+		CD3DX12_RESOURCE_DESC UploadResourceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(XMFLOAT4X4) * 40);
+
+		CD3DX12_HEAP_PROPERTIES HeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+		pD3D12Device->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &UploadResourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr, IID_PPV_ARGS(&m_ModelMatrixResource));
+		//顶点资源
+		UploadResourceDesc.Width = 40 * sizeof(VERTEX);
+		pD3D12Device->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &UploadResourceDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_VertexResource));
+		
+		//索引资源
+		UploadResourceDesc.Width = sizeof(UINT) * 60;
+		pD3D12Device->CreateCommittedResource(&HeapProperties, D3D12_HEAP_FLAG_NONE, &UploadResourceDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_IndexResource));
+
+		//将资源存储到上传堆中
+		BYTE* TransmitPointer = nullptr;
+		m_ModelMatrixResource->Map(0, nullptr, reinterpret_cast<void**>(&TransmitPointer));
+		memcpy(TransmitPointer, _temp_ModelMatrixGroup.data(), sizeof(XMFLOAT4X4) * 40);
+		m_ModelMatrixResource->Unmap(0, nullptr);
+
+		m_VertexResource->Map(0, nullptr, reinterpret_cast<void**>(&TransmitPointer));
+		memcpy(TransmitPointer, VertexArray, 40 * sizeof(VERTEX));
+		m_VertexResource->Unmap(0, nullptr);
+
+		m_IndexResource->Map(0, nullptr, reinterpret_cast<void**>(&TransmitPointer));
+		memcpy(TransmitPointer, IndexArray, 60 * sizeof(UINT));
+		m_IndexResource->Unmap(0, nullptr);
+
+
+		VertexBufferView[0].BufferLocation = m_VertexResource->GetGPUVirtualAddress();
+        VertexBufferView[0].SizeInBytes = 40 * sizeof(VERTEX);
+        VertexBufferView[0].StrideInBytes = sizeof(VERTEX);
+        VertexBufferView[1].BufferLocation = m_ModelMatrixResource->GetGPUVirtualAddress();
+        VertexBufferView[1].SizeInBytes = 40 * sizeof(XMFLOAT4X4);
+        VertexBufferView[1].StrideInBytes = sizeof(XMFLOAT4X4);
+
+        IndexBufferView.BufferLocation = m_IndexResource->GetGPUVirtualAddress();
+        IndexBufferView.SizeInBytes = 60 * sizeof(UINT);
+        IndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+
+	}
+};
+
 
 
 // DX12 引擎
