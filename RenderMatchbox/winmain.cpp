@@ -591,7 +591,206 @@ public:
 	}
 };
 
+// 泥土 (实例类)，继承自全遮挡固体方块
+class Dirt : public SoildBlock
+{
+public:
+	// 构造函数，调用 AppendTextureKey 添加需要的纹理
+	Dirt()
+	{
+		this->AppendTextureKey("dirt");
+	}
 
+	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) override
+	{
+		pCommandList->IASetIndexBuffer(&IndexBufferView);
+		pCommandList->IASetVertexBuffers(0, 2, VertexBufferView);
+
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["dirt"]);
+		
+		pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+	}
+
+};
+// 橡木木板 (实例类)，继承自全遮挡固体方块
+class Planks_Oak : public SoildBlock
+{
+public:
+	// 构造函数，调用 AppendTextureKey 添加需要的纹理
+	Planks_Oak()
+	{
+		this->AppendTextureKey("planks_oak");
+	}
+
+	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) override
+	{
+		pCommandList->IASetIndexBuffer(&IndexBufferView);
+		pCommandList->IASetVertexBuffers(0, 2, VertexBufferView);
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["planks_oak"]);
+
+		pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+	}
+
+
+};
+// 熔炉 (实例类)，继承自全遮挡固体方块
+class Furnace : public SoildBlock
+{
+public:
+	Furnace()
+	{
+		this->AppendTextureKey("furnace_front_off");
+		this->AppendTextureKey("furnace_side");
+		this->AppendTextureKey("furnace_top");
+	}
+
+	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) override
+	{ 
+		pCommandList->IASetIndexBuffer(&IndexBufferView);
+		pCommandList->IASetVertexBuffers(0, 2, VertexBufferView);
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["furnace_top"]);
+		pCommandList->DrawIndexedInstanced(12, 1, 24, 0, 0);
+
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["furnace_side"]);
+		pCommandList->DrawIndexedInstanced(18, 1, 6, 0, 0);
+
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["furnace_front_off"]);
+		pCommandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+	}
+};
+
+// 工作台 (实例类)，继承自全遮挡固体方块
+class Crafting_Table : public SoildBlock
+{
+public:
+	Crafting_Table()
+	{
+		this->AppendTextureKey("crafting_table_front");
+		this->AppendTextureKey("crafting_table_side");
+		this->AppendTextureKey("crafting_table_top");
+	}
+	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) override
+	{
+		pCommandList->IASetVertexBuffers(0, 2, VertexBufferView);
+        pCommandList->IASetIndexBuffer(&IndexBufferView);
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["crafting_table_top"]);
+		pCommandList->DrawIndexedInstanced(12, 1, 24, 0, 0);
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["crafting_table_side"]);
+		pCommandList->DrawIndexedInstanced(18, 1, 6, 0, 0);
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["crafting_table_front"]);
+		pCommandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+	}
+};
+
+class Log_Oak : public SoildBlock
+{
+public:
+	Log_Oak()
+	{
+		this->AppendTextureKey("log_oak");
+		this->AppendTextureKey("log_oak_top");
+	}
+
+	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) override
+	{
+		pCommandList->IASetVertexBuffers(0, 2, VertexBufferView);
+		pCommandList->IASetIndexBuffer(&IndexBufferView);
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["log_oak_top"]);
+		pCommandList->DrawIndexedInstanced(12, 1, 24, 0, 0);
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["log_oak"]);
+		pCommandList->DrawIndexedInstanced(24, 1, 0, 0, 0);
+
+	}
+};
+// 草方块 (实例类)，继承自全遮挡固体方块
+class Grass : public SoildBlock
+{
+public:
+	Grass()
+	{
+		this->AppendTextureKey("grass_side");
+		this->AppendTextureKey("grass_top");
+		this->AppendTextureKey("dirt");
+	}
+	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) override
+	{
+		pCommandList->IASetIndexBuffer(&IndexBufferView);
+		pCommandList->IASetVertexBuffers(0, 2, VertexBufferView);
+
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["grass_top"]);
+		pCommandList->DrawIndexedInstanced(6, 1, 24, 0, 0);
+
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["dirt"]);
+		pCommandList->DrawIndexedInstanced(6, 1, 30, 0, 0);
+
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["grass_side"]);
+		pCommandList->DrawIndexedInstanced(24, 1, 0, 0, 0);
+	}
+};
+
+// 橡木完整台阶 (实例类)，继承自完整台阶方块
+class Planks_Oak_SoildStair : public SoildStair
+{
+public:
+	Planks_Oak_SoildStair()
+	{
+		this->AppendTextureKey("planks_oak");
+	}
+	virtual void DrawModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList) override
+	{
+
+		pCommandList->IASetIndexBuffer(&IndexBufferView);
+
+		pCommandList->IASetVertexBuffers(0, 2, VertexBufferView);
+
+		pCommandList->SetGraphicsRootDescriptorTable(1, Texture_GPUHandle_Map["planks_oak"]);
+		pCommandList->DrawIndexedInstanced(60, 1, 0, 0, 0);
+	}
+};
+// 模型管理器
+class ModelManager
+{
+public:
+	// 纹理映射表元素结构体
+	struct TEXTURE_MAP_INFO
+	{
+		std::wstring TextureFilePath;			// 文件路径
+		// 位于默认堆上纹理资源
+		ComPtr<ID3D12Resource> DefaultHeapTextureResource;
+		// 位于上传堆的纹理资源
+		ComPtr<ID3D12Resource> UploadHeapTextureResource;
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE CPUHandle;
+		CD3DX12_GPU_DESCRIPTOR_HANDLE GPUHandle;
+	};
+	// 纹理映射表
+	std::unordered_map<std::string, TEXTURE_MAP_INFO> Texture_SRV_Map;
+	// 模型组，存储 Model 类指针的 vector，注意存储的是指针，指针可以指向不同类的对象
+	std::vector<Model*> ModelGroup;
+
+public:
+
+	// 构造函数，我们在构造函数上创建纹理映射表
+	ModelManager()
+	{
+		Texture_SRV_Map["dirt"].TextureFilePath = L"resource/dirt.png";
+		Texture_SRV_Map["grass_top"].TextureFilePath = L"resource/grass_top.png";
+		Texture_SRV_Map["grass_side"].TextureFilePath = L"resource/grass_side.png";
+		Texture_SRV_Map["log_oak"].TextureFilePath = L"resource/log_oak.png";
+		Texture_SRV_Map["log_oak_top"].TextureFilePath = L"resource/log_oak_top.png";
+		Texture_SRV_Map["furnace_front_off"].TextureFilePath = L"resource/furnace_front_off.png";
+		Texture_SRV_Map["furnace_side"].TextureFilePath = L"resource/furnace_side.png";
+		Texture_SRV_Map["furnace_top"].TextureFilePath = L"resource/furnace_top.png";
+		Texture_SRV_Map["crafting_table_front"].TextureFilePath = L"resource/crafting_table_front.png";
+		Texture_SRV_Map["crafting_table_side"].TextureFilePath = L"resource/crafting_table_side.png";
+		Texture_SRV_Map["crafting_table_top"].TextureFilePath = L"resource/crafting_table_top.png";
+		Texture_SRV_Map["planks_oak"].TextureFilePath = L"resource/planks_oak.png";
+	}
+
+
+
+
+};
 
 // DX12 引擎
 class DX12Engine
