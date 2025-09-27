@@ -10,6 +10,7 @@
 #include <sstream>
 #include <functional>
 #include <unordered_map>
+#include <memory>
 #include "directx/d3dx12.h"
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")				// 链接 DXGI DLL
@@ -787,9 +788,356 @@ public:
 		Texture_SRV_Map["planks_oak"].TextureFilePath = L"resource/planks_oak.png";
 	}
 
+	// 创建方块，我们在这里写上创建方块的代码
+	void CreateBlock()
+	{
+		// 两层泥土地基，y 是高度
+		for (int x = 0; x < 10; x++)
+		{
+			for (int z = -4; z < 10; z++)
+			{
+				for (int y = -2; y < 0; y++)
+				{
+					Model* dirt = new Dirt();							// 创建对象指针，调用时会根据虚函数表调用不同的函数
+					dirt->SetModelMatrix(XMMatrixTranslation(x, y, z));	// 设置不同的模型矩阵，XMMatrixTranslation 平移模型
+					ModelGroup.push_back(dirt);							// 将新模型添加到模型组
+				}
+			}
+		}
+
+		// 一层草方块地基
+		for (int x = 0; x < 10; x++)
+		{
+			for (int z = -4; z < 10; z++)
+			{
+				Model* grass = new Grass();
+				grass->SetModelMatrix(XMMatrixTranslation(x, 0, z));
+				ModelGroup.push_back(grass);
+			}
+		}
+
+		// 4x4 木板房基
+
+		for (int x = 3; x < 7; x++)
+		{
+			for (int z = 3; z < 7; z++)
+			{
+				Model* plank = new Planks_Oak();
+				plank->SetModelMatrix(XMMatrixTranslation(x, 2, z));
+				ModelGroup.push_back(plank);
+			}
+		}
 
 
+		// 8 柱原木 
 
+		for (int y = 1; y < 7; y++)
+		{
+			Model* log_oak = new Log_Oak();
+			log_oak->SetModelMatrix(XMMatrixTranslation(3, y, 2));
+			ModelGroup.push_back(log_oak);
+		}
+
+		for (int y = 1; y < 7; y++)
+		{
+			Model* log_oak = new Log_Oak();
+			log_oak->SetModelMatrix(XMMatrixTranslation(2, y, 3));
+			ModelGroup.push_back(log_oak);
+		}
+
+		for (int y = 1; y < 7; y++)
+		{
+			Model* log_oak = new Log_Oak();
+			log_oak->SetModelMatrix(XMMatrixTranslation(6, y, 2));
+			ModelGroup.push_back(log_oak);
+		}
+
+		for (int y = 1; y < 7; y++)
+		{
+			Model* log_oak = new Log_Oak();
+			log_oak->SetModelMatrix(XMMatrixTranslation(7, y, 3));
+			ModelGroup.push_back(log_oak);
+		}
+
+		for (int y = 1; y < 7; y++)
+		{
+			Model* log_oak = new Log_Oak();
+			log_oak->SetModelMatrix(XMMatrixTranslation(7, y, 6));
+			ModelGroup.push_back(log_oak);
+		}
+
+		for (int y = 1; y < 7; y++)
+		{
+			Model* log_oak = new Log_Oak();
+			log_oak->SetModelMatrix(XMMatrixTranslation(6, y, 7));
+			ModelGroup.push_back(log_oak);
+		}
+
+		for (int y = 1; y < 7; y++)
+		{
+			Model* log_oak = new Log_Oak();
+			log_oak->SetModelMatrix(XMMatrixTranslation(2, y, 6));
+			ModelGroup.push_back(log_oak);
+		}
+
+		for (int y = 1; y < 7; y++)
+		{
+			Model* log_oak = new Log_Oak();
+			log_oak->SetModelMatrix(XMMatrixTranslation(3, y, 7));
+			ModelGroup.push_back(log_oak);
+		}
+
+
+		// 其他木板与门前台阶
+		{
+			Model* plank = new Planks_Oak();
+			plank->SetModelMatrix(XMMatrixTranslation(4, 2, 2));
+			ModelGroup.push_back(plank);
+
+			plank = new Planks_Oak();
+			plank->SetModelMatrix(XMMatrixTranslation(5, 2, 2));
+			ModelGroup.push_back(plank);
+
+			for (int y = 5; y < 7; y++)
+			{
+				for (int x = 4; x < 6; x++)
+				{
+					plank = new Planks_Oak();
+					plank->SetModelMatrix(XMMatrixTranslation(x, y, 2));
+					ModelGroup.push_back(plank);
+				}
+			}
+
+			for (int y = 2; y < 4; y++)
+			{
+				for (int z = 4; z < 6; z++)
+				{
+					plank = new Planks_Oak();
+					plank->SetModelMatrix(XMMatrixTranslation(2, y, z));
+					ModelGroup.push_back(plank);
+				}
+			}
+
+			for (int y = 2; y < 4; y++)
+			{
+				for (int x = 4; x < 6; x++)
+				{
+					plank = new Planks_Oak();
+					plank->SetModelMatrix(XMMatrixTranslation(x, y, 7));
+					ModelGroup.push_back(plank);
+				}
+			}
+
+			for (int y = 2; y < 4; y++)
+			{
+				for (int z = 4; z < 6; z++)
+				{
+					plank = new Planks_Oak();
+					plank->SetModelMatrix(XMMatrixTranslation(7, y, z));
+					ModelGroup.push_back(plank);
+				}
+			}
+
+			plank = new Planks_Oak();
+			plank->SetModelMatrix(XMMatrixTranslation(2, 6, 4));
+			ModelGroup.push_back(plank);
+
+			plank = new Planks_Oak();
+			plank->SetModelMatrix(XMMatrixTranslation(2, 6, 5));
+			ModelGroup.push_back(plank);
+
+			plank = new Planks_Oak();
+			plank->SetModelMatrix(XMMatrixTranslation(4, 6, 7));
+			ModelGroup.push_back(plank);
+
+			plank = new Planks_Oak();
+			plank->SetModelMatrix(XMMatrixTranslation(5, 6, 7));
+			ModelGroup.push_back(plank);
+
+			plank = new Planks_Oak();
+			plank->SetModelMatrix(XMMatrixTranslation(7, 6, 4));
+			ModelGroup.push_back(plank);
+
+			plank = new Planks_Oak();
+			plank->SetModelMatrix(XMMatrixTranslation(7, 6, 5));
+			ModelGroup.push_back(plank);
+
+			Model* stair = new Planks_Oak_SoildStair();
+			stair->SetModelMatrix(XMMatrixTranslation(4, 2, 1));
+			ModelGroup.push_back(stair);
+
+			stair = new Planks_Oak_SoildStair();
+			stair->SetModelMatrix(XMMatrixTranslation(5, 2, 1));
+			ModelGroup.push_back(stair);
+
+			stair = new Planks_Oak_SoildStair();
+			stair->SetModelMatrix(XMMatrixTranslation(4, 1, 0));
+			ModelGroup.push_back(stair);
+
+			stair = new Planks_Oak_SoildStair();
+			stair->SetModelMatrix(XMMatrixTranslation(5, 1, 0));
+			ModelGroup.push_back(stair);
+		}
+
+		// 4x4 木板房顶
+
+		for (int x = 3; x < 7; x++)
+		{
+			for (int z = 3; z < 7; z++)
+			{
+				Model* plank = new Planks_Oak();
+				plank->SetModelMatrix(XMMatrixTranslation(x, 6, z));
+				ModelGroup.push_back(plank);
+			}
+		}
+
+		// 屋顶
+
+		{
+			// 第一层
+
+			for (int x = 3; x < 7; x++)
+			{
+				Model* stair = new Planks_Oak_SoildStair();
+				stair->SetModelMatrix(XMMatrixTranslation(x, 6, 1));
+				ModelGroup.push_back(stair);
+			}
+
+			for (int x = 3; x < 7; x++)
+			{
+				// 旋转橡木台阶用的模型矩阵
+				// 这里本来是可以不用 XMMatrixTranslation(-0.5, -0.5, -0.5) 平移到模型中心的
+				// 因为作者本人 (我) 的设计失误，把模型坐标系原点建立在模型左下角了 (见上文的 VertexArray)
+				// 导致还要先把原点平移到模型中心，旋转完再还原，增大计算量，这个是完全可以规避的
+				// 读者可以自行修改 VertexArray，使方块以自身中心为原点建系，这样就可以直接 XMMatrixRotationY() 进行旋转了
+				XMMATRIX transform = XMMatrixTranslation(-0.5, -0.5, -0.5);
+				transform *= XMMatrixRotationY(XM_PI);						// 平移中心后，再旋转，否则会出错 (旋转角度是弧度)
+				transform *= XMMatrixTranslation(0.5, 0.5, 0.5);			// 旋转完再还原
+				transform *= XMMatrixTranslation(x, 6, 8);					// 再平移到对应的坐标
+				Model* stair = new Planks_Oak_SoildStair();
+				stair->SetModelMatrix(transform);
+				ModelGroup.push_back(stair);
+			}
+
+			for (int z = 3; z < 7; z++)
+			{
+				XMMATRIX transform = XMMatrixTranslation(-0.5, -0.5, -0.5);
+				transform *= XMMatrixRotationY(XM_PIDIV2);					// 旋转 90°
+				transform *= XMMatrixTranslation(0.5, 0.5, 0.5);
+				transform *= XMMatrixTranslation(1, 6, z);
+				Model* stair = new Planks_Oak_SoildStair();
+				stair->SetModelMatrix(transform);
+				ModelGroup.push_back(stair);
+			}
+
+			for (int z = 3; z < 7; z++)
+			{
+				XMMATRIX transform = XMMatrixTranslation(-0.5, -0.5, -0.5);
+				transform *= XMMatrixRotationY(XM_PI + XM_PIDIV2);			// 旋转 270°
+				transform *= XMMatrixTranslation(0.5, 0.5, 0.5);
+				transform *= XMMatrixTranslation(8, 6, z);
+				Model* stair = new Planks_Oak_SoildStair();
+				stair->SetModelMatrix(transform);
+				ModelGroup.push_back(stair);
+			}
+
+			// 第二层
+
+			for (int x = 3; x < 7; x++)
+			{
+				Model* stair = new Planks_Oak_SoildStair();
+				stair->SetModelMatrix(XMMatrixTranslation(x, 7, 2));
+				ModelGroup.push_back(stair);
+			}
+
+			for (int x = 3; x < 7; x++)
+			{
+				XMMATRIX transform = XMMatrixTranslation(-0.5, -0.5, -0.5);
+				transform *= XMMatrixRotationY(XM_PI);
+				transform *= XMMatrixTranslation(0.5, 0.5, 0.5);
+				transform *= XMMatrixTranslation(x, 7, 7);
+				Model* stair = new Planks_Oak_SoildStair();
+				stair->SetModelMatrix(transform);
+				ModelGroup.push_back(stair);
+			}
+
+			for (int z = 3; z < 7; z++)
+			{
+				XMMATRIX transform = XMMatrixTranslation(-0.5, -0.5, -0.5);
+				transform *= XMMatrixRotationY(XM_PIDIV2);
+				transform *= XMMatrixTranslation(0.5, 0.5, 0.5);
+				transform *= XMMatrixTranslation(2, 7, z);
+				Model* stair = new Planks_Oak_SoildStair();
+				stair->SetModelMatrix(transform);
+				ModelGroup.push_back(stair);
+			}
+
+			for (int z = 3; z < 7; z++)
+			{
+				XMMATRIX transform = XMMatrixTranslation(-0.5, -0.5, -0.5);
+				transform *= XMMatrixRotationY(XM_PI + XM_PIDIV2);
+				transform *= XMMatrixTranslation(0.5, 0.5, 0.5);
+				transform *= XMMatrixTranslation(7, 7, z);
+				Model* stair = new Planks_Oak_SoildStair();
+				stair->SetModelMatrix(transform);
+				ModelGroup.push_back(stair);
+			}
+
+			// 补上屋顶空位
+
+			for (int x = 3; x < 7; x++)
+			{
+				for (int z = 3; z < 7; z++)
+				{
+					Model* plank = new Planks_Oak();
+					plank->SetModelMatrix(XMMatrixTranslation(x, 7, z));
+					ModelGroup.push_back(plank);
+				}
+			}
+		}
+
+		// 工作台和熔炉
+		{
+			Model* craft_table = new Crafting_Table();
+			craft_table->SetModelMatrix(XMMatrixTranslation(3, 3, 6));
+			ModelGroup.push_back(craft_table);
+
+			Model* furnace = new Furnace();
+			furnace->SetModelMatrix(XMMatrixTranslation(4, 3, 6));
+			ModelGroup.push_back(furnace);
+
+			furnace = new Furnace();
+			furnace->SetModelMatrix(XMMatrixTranslation(5, 3, 6));
+			ModelGroup.push_back(furnace);
+		}
+
+	}
+
+	// 当一切准备就绪后，就可以正式创建模型资源，准备渲染了
+	// 调用该函数的前提是: 依次完成 DX12Engine::CreateModelTextureResource (读取并创建纹理资源)，CreateBlock (创建方块，设置模型矩阵)
+	void CreateModelResource(ComPtr<ID3D12Device4>& pD3D12Device)
+	{
+		//此处创建的资源会存在资源堆中，当配置好根参数后，就可以根据根参数使用资源堆中的资源
+		for (auto& model : ModelGroup)
+        {
+            model->CreateResourceAndDescriptor(pD3D12Device);
+			// 遍历模型自身的映射表，设置模型需要用到的纹理
+			for (const auto& texture : model->RequestForTextureMap())
+			{
+				// 设置模型的 SRV 描述符
+				model->SetTextureGPUHandle(texture.first, Texture_SRV_Map[texture.first].GPUHandle);
+			}
+        }
+	}
+
+	void RenderAllModel(ComPtr<ID3D12GraphicsCommandList>& pCommandList)
+	{
+		// 遍历模型组
+		for (const auto& model : ModelGroup)
+		{
+			model->DrawModel(pCommandList);
+		}
+	}
 };
 
 // DX12 引擎
@@ -821,8 +1169,8 @@ private:
 	ComPtr<ID3D12Fence> m_Fence;							// 围栏
 	UINT64 FenceValue = 0;									// 用于围栏等待的围栏值
 	HANDLE RenderEvent = NULL;								// GPU 渲染事件
-	D3D12_RESOURCE_BARRIER beg_barrier = {};				// 渲染开始的资源屏障，呈现 -> 渲染目标
-	D3D12_RESOURCE_BARRIER end_barrier = {};				// 渲染结束的资源屏障，渲染目标 -> 呈现
+	CD3DX12_RESOURCE_BARRIER barrier = {};				
+
 
 	ComPtr<ID3D12DescriptorHeap> m_DSVHeap;					// DSV 描述符堆
 	D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle;					// DSV 描述符句柄
@@ -876,6 +1224,7 @@ private:
 	D3D12_VIEWPORT viewPort = D3D12_VIEWPORT{ 0, 0, float(WindowWidth), float(WindowHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
 	// 裁剪矩形
 	D3D12_RECT ScissorRect = D3D12_RECT{ 0, 0, WindowWidth, WindowHeight };
+	std::unique_ptr<BYTE[]> TextureData;
 public:
 	void InitWindow(HINSTANCE hins)
 	{
@@ -1167,7 +1516,45 @@ public:
 		);
 
 	}
+	void CopyTextureDataToDefaultResource(ModelManager::TEXTURE_MAP_INFO& Info)
+	{
+		TextureData = std::make_unique<BYTE[]>(TextureSize);
+		m_WICBitmapSource->CopyPixels(nullptr, BytePerRowSize, TextureSize, TextureData.get());
+		BYTE* TextureDataPtr = TextureData.get();
 
+
+		D3D12_SUBRESOURCE_DATA textureData{};
+		textureData.pData = TextureData.get();					// 指向纹理数据的指针
+		textureData.RowPitch = BytePerRowSize;			//为对齐后每行的大小
+		textureData.SlicePitch = TextureSize;					//童谣为对齐后的整个纹理数据大小，单位：字节
+
+		m_CommandAllocator->Reset();
+		m_CommandList->Reset(m_CommandAllocator.Get(), nullptr);
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(Info.DefaultHeapTextureResource.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+		m_CommandList->ResourceBarrier(1, &barrier);
+		UpdateSubresources<1>(
+			m_CommandList.Get(),
+			Info.DefaultHeapTextureResource.Get(),
+			Info.UploadHeapTextureResource.Get(),
+			0, 0, 1, &textureData
+		);//内部是先将数据复制到上传堆，然后再从上传堆复制到默认堆，自动调用CopyTextureRegion拷贝上上传堆到默认堆
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(Info.DefaultHeapTextureResource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+		m_CommandList->ResourceBarrier(1, &barrier);
+		m_CommandList->Close();
+		// 用于传递命令用的临时 ID3D12CommandList 数组
+		ID3D12CommandList* _temp_cmdlists[] = { m_CommandList.Get() };
+
+		// 提交复制命令！GPU 开始复制！
+		m_CommandQueue->ExecuteCommandLists(1, _temp_cmdlists);
+
+		// 将围栏预定值设定为下一帧，注意复制资源也需要围栏等待，否则会发生资源冲突
+		FenceValue++;
+		// 在命令队列 (命令队列在 GPU 端) 设置围栏预定值，此命令会加入到命令队列中
+		// 命令队列执行到这里会修改围栏值，表示复制已完成，"击中"围栏
+		m_CommandQueue->Signal(m_Fence.Get(), FenceValue);
+		// 设置围栏的预定事件，当复制完成时，围栏被"击中"，激发预定事件，将事件由无信号状态转换成有信号状态
+		m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
+	}
 
 
 
