@@ -1540,6 +1540,12 @@ public:
 		);//内部是先将数据复制到上传堆，然后再从上传堆复制到默认堆，自动调用CopyTextureRegion拷贝上上传堆到默认堆
 		barrier = CD3DX12_RESOURCE_BARRIER::Transition(Info.DefaultHeapTextureResource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
 		m_CommandList->ResourceBarrier(1, &barrier);
+		//m_CommandList->Close(); 
+	}
+
+	// 关闭命令列表，启动命令队列，正式开始将纹理复制到默认堆资源中
+	void StartCommandExecute()
+	{
 		m_CommandList->Close();
 		// 用于传递命令用的临时 ID3D12CommandList 数组
 		ID3D12CommandList* _temp_cmdlists[] = { m_CommandList.Get() };
@@ -1556,7 +1562,24 @@ public:
 		m_Fence->SetEventOnCompletion(FenceValue, RenderEvent);
 	}
 
+	// 最终创建 SRV 着色器资源描述符，用于描述默认堆资源为一块纹理，创建完 SRV 描述符，会将描述符句柄存储到纹理映射表中
+	void CreateSRV(ModelManager::TEXTURE_MAP_INFO& Info,D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle, D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle)
+	{ 
+        CD3DX12_SHADER_RESOURCE_VIEW_DESC SRVDescriptorDes = CD3DX12_SHADER_RESOURCE_VIEW_DESC::Tex2D(
+			TextureFormat,
+			1,
+			0);
+		m_D3D12Device->CreateShaderResourceView(Info.DefaultHeapTextureResource.Get(), &SRVDescriptorDes, CPUHandle);
 
+		Info.CPUHandle = CPUHandle;
+		Info.GPUHandle = GPUHandle;
+	}
 
+	void CreateModelTextureResource()
+	{
+		//将所有的纹理
+		CreateSRVHeap();
+		CD3DX12_CPU_DESCRIPTOR_HANDLE CurrentCPUHandle(m_SRVHeap->GetCPUDescriptorHandleForHeapStart());
 
+	}
 };
